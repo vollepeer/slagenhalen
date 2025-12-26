@@ -456,6 +456,29 @@ app.post("/api/events/:id/lock", async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/events/:id/unlock", async (req, res) => {
+  const eventId = Number(req.params.id);
+  const event = await getEventById(eventId);
+  if (!event) {
+    return res.status(404).json({ message: "Kaartavond niet gevonden." });
+  }
+  if (event.status === "OPEN") {
+    return res.status(400).json({ message: "Kaartavond is al open." });
+  }
+
+  await exec(
+    "UPDATE events SET status = 'OPEN', locked_at = NULL WHERE id = ?",
+    [eventId]
+  );
+
+  await exec(
+    "INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('event', ?, 'UNLOCKED')",
+    [eventId]
+  );
+
+  res.json({ ok: true });
+});
+
 app.get("/api/seasons/:id/ranking", async (req, res) => {
   const seasonId = Number(req.params.id);
   const events = await query<

@@ -13,6 +13,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { apiGet, apiSend } from "../api";
 import { EventSummary, Season } from "../types";
+import { formatEventDate } from "../utils/date";
 
 export function EventsPage() {
   const navigate = useNavigate();
@@ -142,7 +143,7 @@ export function EventsPage() {
             >
               <Box>
                 <Typography variant="h6">
-                  {event.title || "Kaartavond"} · {event.eventDate}
+                  {event.title || "Kaartavond"} · {formatEventDate(event.eventDate)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}

@@ -15,9 +15,11 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiSend } from "../api";
 import { EventDetail, EventParticipant, Player } from "../types";
+import { formatEventDate } from "../utils/date";
 
 export function EventDetailPage() {
   const { id } = useParams();
@@ -28,6 +30,83 @@ export function EventDetailPage() {
   const [playerId, setPlayerId] = useState<number | "">("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
+  const theme = useTheme();
+
+  const tieColors = useMemo(
+    () => [
+      alpha(theme.palette.secondary.main, 0.16),
+      alpha(theme.palette.primary.main, 0.12),
+      alpha(theme.palette.secondary.main, 0.1)
+    ],
+    [theme]
+  );
+
+  const rankingDisplay = useMemo(() => {
+    if (!event) {
+      return {
+        rows: [] as EventParticipant[],
+        activeById: new Map<number, { rank: number | null; score: number | null }>(),
+        tieColorByScore: new Map<number, string>()
+      };
+    }
+
+    const snapshots = event.participants.map((participant) => {
+      if (participant.rankR3 !== null) {
+        return {
+          participant,
+          rank: participant.rankR3,
+          score: participant.totalPoints
+        };
+      }
+      if (participant.rankR2 !== null) {
+        const score = (participant.pointsR1 ?? 0) + (participant.pointsR2 ?? 0);
+        return { participant, rank: participant.rankR2, score };
+      }
+      if (participant.rankR1 !== null) {
+        return { participant, rank: participant.rankR1, score: participant.pointsR1 };
+      }
+      return { participant, rank: null, score: null };
+    });
+
+    const sorted = [...snapshots].sort((a, b) => {
+      if (a.rank !== null && b.rank !== null) {
+        return a.rank - b.rank;
+      }
+      if (a.rank !== null) return -1;
+      if (b.rank !== null) return 1;
+      return a.participant.playerName.localeCompare(b.participant.playerName);
+    });
+
+    const scoreCounts = new Map<number, number>();
+    sorted.forEach((entry) => {
+      if (entry.score !== null) {
+        scoreCounts.set(entry.score, (scoreCounts.get(entry.score) ?? 0) + 1);
+      }
+    });
+
+    const tieColorByScore = new Map<number, string>();
+    let tieIndex = 0;
+    sorted.forEach((entry) => {
+      if (entry.score !== null && (scoreCounts.get(entry.score) ?? 0) > 1) {
+        if (!tieColorByScore.has(entry.score)) {
+          tieColorByScore.set(entry.score, tieColors[tieIndex % tieColors.length]);
+          tieIndex += 1;
+        }
+      }
+    });
+
+    const activeById = new Map<number, { rank: number | null; score: number | null }>();
+    sorted.forEach((entry) => {
+      activeById.set(entry.participant.id, { rank: entry.rank, score: entry.score });
+    });
+
+    return {
+      rows: sorted.map((entry) => entry.participant),
+      activeById,
+      tieColorByScore
+    };
+  }, [event, tieColors]);
 
   const loadEvent = async () => {
     try {
@@ -114,6 +193,16 @@ export function EventDetailPage() {
     }
   };
 
+  const unlockEvent = async () => {
+    try {
+      await apiSend(`/api/events/${eventId}/unlock`, "POST");
+      setSuccess("Kaartavond ontgrendeld.");
+      await loadEvent();
+    } catch (err) {
+      setError("Ontgrendelen mislukt.");
+    }
+  };
+
   if (!event) {
     return (
       <Box>
@@ -130,13 +219,14 @@ export function EventDetailPage() {
           {event.title || "Kaartavond"}
         </Typography>
         <Typography variant="body1">
-          Datum: {event.eventDate} · Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
+          Datum: {formatEventDate(event.eventDate)} · Status:{" "}
+          {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
         </Typography>
       </Box>
 
       {event.status === "LOCKED" && (
         <Alert severity="info">
-          Deze kaartavond is vergrendeld en kan niet meer worden aangepast.
+          Deze kaartavond is vergrendeld. Ontgrendel om wijzigingen te doen.
         </Alert>
       )}
 
@@ -179,6 +269,7 @@ export function EventDetailPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Rang (actueel)</TableCell>
                 <TableCell>Speler</TableCell>
                 <TableCell>Punten ronde 1</TableCell>
                 <TableCell>Rang na ronde 1</TableCell>
@@ -190,15 +281,33 @@ export function EventDetailPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {event.participants.map((participant) => (
-                <TableRow key={participant.id}>
-                  <TableCell>{participant.playerName}</TableCell>
-                  <TableCell>
-                    <TextField
-                      value={participant.pointsR1 ?? ""}
-                      onChange={(event) =>
-                        updateScore(participant, "pointsR1", event.target.value)
-                      }
+              {rankingDisplay.rows.map((participant) => {
+                const active = rankingDisplay.activeById.get(participant.id);
+                const tieColor =
+                  active?.score !== null
+                    ? rankingDisplay.tieColorByScore.get(active.score)
+                    : undefined;
+                return (
+                  <TableRow
+                    key={participant.id}
+                    sx={{
+                      backgroundColor: tieColor,
+                      outline:
+                        activeParticipantId === participant.id
+                          ? `2px solid ${theme.palette.secondary.main}`
+                          : "none",
+                      outlineOffset: "-2px"
+                    }}
+                  >
+                    <TableCell sx={{ fontWeight: 700 }}>{active?.rank ?? ""}</TableCell>
+                    <TableCell>{participant.playerName}</TableCell>
+                    <TableCell>
+                      <TextField
+                        value={participant.pointsR1 ?? ""}
+                        onFocus={() => setActiveParticipantId(participant.id)}
+                        onChange={(event) =>
+                          updateScore(participant, "pointsR1", event.target.value)
+                        }
                       type="number"
                       size="small"
                       inputProps={{ min: 0 }}
@@ -207,11 +316,12 @@ export function EventDetailPage() {
                   </TableCell>
                   <TableCell>{participant.rankR1 ?? ""}</TableCell>
                   <TableCell>
-                    <TextField
-                      value={participant.pointsR2 ?? ""}
-                      onChange={(event) =>
-                        updateScore(participant, "pointsR2", event.target.value)
-                      }
+                      <TextField
+                        value={participant.pointsR2 ?? ""}
+                        onFocus={() => setActiveParticipantId(participant.id)}
+                        onChange={(event) =>
+                          updateScore(participant, "pointsR2", event.target.value)
+                        }
                       type="number"
                       size="small"
                       inputProps={{ min: 0 }}
@@ -220,11 +330,12 @@ export function EventDetailPage() {
                   </TableCell>
                   <TableCell>{participant.rankR2 ?? ""}</TableCell>
                   <TableCell>
-                    <TextField
-                      value={participant.pointsR3 ?? ""}
-                      onChange={(event) =>
-                        updateScore(participant, "pointsR3", event.target.value)
-                      }
+                      <TextField
+                        value={participant.pointsR3 ?? ""}
+                        onFocus={() => setActiveParticipantId(participant.id)}
+                        onChange={(event) =>
+                          updateScore(participant, "pointsR3", event.target.value)
+                        }
                       type="number"
                       size="small"
                       inputProps={{ min: 0 }}
@@ -232,9 +343,10 @@ export function EventDetailPage() {
                     />
                   </TableCell>
                   <TableCell>{participant.rankR3 ?? ""}</TableCell>
-                  <TableCell>{participant.totalPoints ?? ""}</TableCell>
-                </TableRow>
-              ))}
+                    <TableCell>{participant.totalPoints ?? ""}</TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -258,22 +370,41 @@ export function EventDetailPage() {
               )}
             </Box>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="h6">Vergrendelen</Typography>
-              {event.canLock ? (
-                <Typography variant="body2">Alle voorwaarden zijn in orde.</Typography>
+              {event.status === "LOCKED" ? (
+                <>
+                  <Typography variant="h6">Ontgrendelen</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Ontgrendel om de scores en deelnemers te wijzigen.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    sx={{ mt: 1 }}
+                    onClick={unlockEvent}
+                  >
+                    Kaartavond ontgrendelen
+                  </Button>
+                </>
               ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Voorwaarden niet voldaan: {event.lockReasons.join(", ")}
-                </Typography>
+                <>
+                  <Typography variant="h6">Vergrendelen</Typography>
+                  {event.canLock ? (
+                    <Typography variant="body2">Alle voorwaarden zijn in orde.</Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Voorwaarden niet voldaan: {event.lockReasons.join(", ")}
+                    </Typography>
+                  )}
+                  <Button
+                    variant="contained"
+                    sx={{ mt: 1 }}
+                    onClick={lockEvent}
+                    disabled={!event.canLock}
+                  >
+                    Kaartavond vergrendelen
+                  </Button>
+                </>
               )}
-              <Button
-                variant="contained"
-                sx={{ mt: 1 }}
-                onClick={lockEvent}
-                disabled={!event.canLock || event.status === "LOCKED"}
-              >
-                Kaartavond vergrendelen
-              </Button>
             </Box>
           </Stack>
         </CardContent>
@@ -281,7 +412,7 @@ export function EventDetailPage() {
 
       {event.tieErrors.length > 0 && (
         <Alert severity="warning">
-          Gelijke scores zijn niet toegestaan. Pas de punten aan.
+          Gelijke totaalscores zijn niet toegestaan. Pas de punten aan.
         </Alert>
       )}
     </Stack>

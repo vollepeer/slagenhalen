@@ -82,9 +82,7 @@ export function computeRanking(rows: ParticipantRow[]): RankingResult {
   const round2 = computeRanks(participants, 2);
   const round3 = computeRanks(participants, 3);
 
-  if (round1.tie) tieErrors.push("Ties detected in round 1");
-  if (round2.tie) tieErrors.push("Ties detected in round 2");
-  if (round3.tie) tieErrors.push("Ties detected in round 3");
+  if (round3.tie) tieErrors.push("Ties detected in final totals");
 
   participants.forEach((p) => {
     p.rank_r1 = round1.ranks.get(p.id) ?? null;
@@ -122,7 +120,7 @@ export function canLockEvent(participants: RankedParticipant[], tieErrors: strin
   }
 
   if (tieErrors.length > 0) {
-    reasons.push("Ties detected in rankings");
+    reasons.push("Gelijke totaalscores in de eindstand");
   }
 
   return { allowed: reasons.length === 0, reasons };

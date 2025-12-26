@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -14,6 +14,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
 import { apiGet } from "../api";
 import { Season, SeasonRanking } from "../types";
 
@@ -22,6 +23,41 @@ export function RankingPage() {
   const [seasonId, setSeasonId] = useState<number | "">("");
   const [ranking, setRanking] = useState<SeasonRanking | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+
+  const tieColors = useMemo(
+    () => [
+      alpha(theme.palette.secondary.main, 0.16),
+      alpha(theme.palette.primary.main, 0.12),
+      alpha(theme.palette.secondary.main, 0.1)
+    ],
+    [theme]
+  );
+
+  const rankingDisplay = useMemo(() => {
+    if (!ranking?.ranking) {
+      return { rows: [], tieColorByScore: new Map<number, string>() };
+    }
+
+    const rows = [...ranking.ranking].sort((a, b) => a.rank - b.rank);
+    const scoreCounts = new Map<number, number>();
+    rows.forEach((entry) => {
+      scoreCounts.set(entry.seasonTotal, (scoreCounts.get(entry.seasonTotal) ?? 0) + 1);
+    });
+
+    const tieColorByScore = new Map<number, string>();
+    let tieIndex = 0;
+    rows.forEach((entry) => {
+      if ((scoreCounts.get(entry.seasonTotal) ?? 0) > 1) {
+        if (!tieColorByScore.has(entry.seasonTotal)) {
+          tieColorByScore.set(entry.seasonTotal, tieColors[tieIndex % tieColors.length]);
+          tieIndex += 1;
+        }
+      }
+    });
+
+    return { rows, tieColorByScore };
+  }, [ranking, tieColors]);
 
   const loadSeasons = async () => {
     try {
@@ -105,16 +141,21 @@ export function RankingPage() {
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Rang</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Rang</TableCell>
                   <TableCell>Speler</TableCell>
                   <TableCell>Totaal punten</TableCell>
                   <TableCell>Kaartavonden</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {ranking.ranking.map((entry) => (
-                  <TableRow key={entry.playerId}>
-                    <TableCell>{entry.rank}</TableCell>
+                {rankingDisplay.rows.map((entry) => (
+                  <TableRow
+                    key={entry.playerId}
+                    sx={{
+                      backgroundColor: rankingDisplay.tieColorByScore.get(entry.seasonTotal)
+                    }}
+                  >
+                    <TableCell sx={{ fontWeight: 700 }}>{entry.rank}</TableCell>
                     <TableCell>{entry.playerName}</TableCell>
                     <TableCell>{entry.seasonTotal}</TableCell>
                     <TableCell>{entry.appearances}</TableCell>

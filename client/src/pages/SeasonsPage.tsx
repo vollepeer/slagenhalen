@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import { apiGet, apiSend } from "../api";
 import { Season } from "../types";
+import { formatEventDate } from "../utils/date";
 
 export function SeasonsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -117,6 +118,15 @@ export function SeasonsPage() {
             >
               <Box>
                 <Typography variant="h6">{season.name}</Typography>
+                {(season.startDate || season.endDate) && (
+                  <Typography variant="body2" color="text.secondary">
+                    {season.startDate && season.endDate
+                      ? `Periode: ${formatEventDate(season.startDate)} - ${formatEventDate(season.endDate)}`
+                      : season.startDate
+                        ? `Start: ${formatEventDate(season.startDate)}`
+                        : `Einde: ${formatEventDate(season.endDate ?? "")}`}
+                  </Typography>
+                )}
                 {season.isArchived && (
                   <Typography variant="body2" color="text.secondary">
                     Gearchiveerd
