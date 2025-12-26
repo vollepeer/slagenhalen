@@ -31,6 +31,11 @@ export function EventDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
+  const [prizeRanks, setPrizeRanks] = useState<[string, string, string]>([
+    "1",
+    "18",
+    "25"
+  ]);
   const theme = useTheme();
 
   const tieColors = useMemo(
@@ -112,6 +117,13 @@ export function EventDetailPage() {
     try {
       const data = await apiGet<EventDetail>(`/api/events/${eventId}`);
       setEvent(data);
+      if (data.prizeRanks.length === 3) {
+        setPrizeRanks([
+          String(data.prizeRanks[0]),
+          String(data.prizeRanks[1]),
+          String(data.prizeRanks[2])
+        ]);
+      }
       setError(null);
     } catch (err) {
       setError("Kon kaartavond niet laden.");
@@ -190,6 +202,30 @@ export function EventDetailPage() {
       await loadEvent();
     } catch (err) {
       setError("Vergrendelen mislukt. Controleer de voorwaarden.");
+    }
+  };
+
+  const savePrizeRanks = async () => {
+    const parsed = prizeRanks.map((value) => Number(value));
+    if (parsed.some((value) => !Number.isInteger(value) || value < 1 || value > 60)) {
+      setError("Vul drie geldige rangnummers in.");
+      return;
+    }
+    const unique = new Set(parsed);
+    if (unique.size !== parsed.length) {
+      setError("Prijsrangen moeten uniek zijn.");
+      return;
+    }
+    try {
+      await apiSend(`/api/events/${eventId}`, "PATCH", {
+        prizeRank1: parsed[0],
+        prizeRank2: parsed[1],
+        prizeRank3: parsed[2]
+      });
+      setSuccess("Prijsrangen opgeslagen.");
+      await loadEvent();
+    } catch (err) {
+      setError("Prijsrangen opslaan mislukt.");
     }
   };
 
@@ -357,17 +393,75 @@ export function EventDetailPage() {
           <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
             <Box sx={{ flex: 1 }}>
               <Typography variant="h6">Prijswinnaars</Typography>
-              {event.winners.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Nog geen prijswinnaars beschikbaar.
-                </Typography>
-              ) : (
-                event.winners.map((winner) => (
-                  <Typography key={winner.rank}>
-                    Rang {winner.rank}: {winner.playerName}
+              <Stack spacing={1} sx={{ mt: 1 }}>
+                <Typography variant="subtitle2">Prijsrangen per ronde</Typography>
+                <Stack direction="row" spacing={1}>
+                  {prizeRanks.map((value, index) => (
+                    <TextField
+                      key={`prize-rank-${index}`}
+                      label={`Rang ${index + 1}`}
+                      type="number"
+                      size="small"
+                      value={value}
+                      onChange={(event) =>
+                        setPrizeRanks((current) => {
+                          const next = [...current] as [string, string, string];
+                          next[index] = event.target.value;
+                          return next;
+                        })
+                      }
+                      inputProps={{ min: 1 }}
+                      disabled={event.status === "LOCKED"}
+                      sx={{ maxWidth: 110 }}
+                    />
+                  ))}
+                  <Button
+                    variant="outlined"
+                    onClick={savePrizeRanks}
+                    disabled={event.status === "LOCKED"}
+                  >
+                    Opslaan
+                  </Button>
+                </Stack>
+              </Stack>
+              <Stack spacing={1} sx={{ mt: 2 }}>
+                {event.roundWinners.every((round) => round.winners.length === 0) ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Nog geen prijswinnaars beschikbaar.
                   </Typography>
-                ))
-              )}
+                ) : (
+                  event.roundWinners.map((round) => (
+                    <Box key={`round-${round.round}`}>
+                      <Typography variant="subtitle2">
+                        Ronde {round.round}
+                      </Typography>
+                      {round.winners.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          Geen prijswinnaars.
+                        </Typography>
+                      ) : (
+                        round.winners.map((winner) => (
+                          <Typography key={`round-${round.round}-${winner.rank}`}>
+                            Rang {winner.rank}: {winner.playerName}
+                          </Typography>
+                        ))
+                      )}
+                    </Box>
+                  ))
+                )}
+                <Box>
+                  <Typography variant="subtitle2">Eindwinnaar</Typography>
+                  {event.eventWinner ? (
+                    <Typography>
+                      Rang {event.eventWinner.rank}: {event.eventWinner.playerName}
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Nog geen eindwinnaar beschikbaar.
+                    </Typography>
+                  )}
+                </Box>
+              </Stack>
             </Box>
             <Box sx={{ flex: 1 }}>
               {event.status === "LOCKED" ? (

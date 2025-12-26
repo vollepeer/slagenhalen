@@ -206,13 +206,26 @@ app.post("/api/events", async (req, res) => {
     return res.status(400).json({ message: "Ongeldige kaartavondgegevens." });
   }
 
+  const prizeRanks = [
+    parsed.data.prizeRank1 ?? 1,
+    parsed.data.prizeRank2 ?? 18,
+    parsed.data.prizeRank3 ?? 25
+  ];
+  const prizeError = validatePrizeRanks(prizeRanks);
+  if (prizeError) {
+    return res.status(400).json({ message: prizeError });
+  }
+
   const result = await exec(
-    "INSERT INTO events (season_id, event_date, title, notes) VALUES (?, ?, ?, ?)",
+    "INSERT INTO events (season_id, event_date, title, notes, prize_rank_1, prize_rank_2, prize_rank_3) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [
       parsed.data.seasonId,
       parsed.data.eventDate,
       parsed.data.title ?? null,
-      parsed.data.notes ?? null
+      parsed.data.notes ?? null,
+      prizeRanks[0],
+      prizeRanks[1],
+      prizeRanks[2]
     ]
   );
 
@@ -227,17 +240,30 @@ async function getEventById(eventId: number) {
       event_date: string;
       title: string | null;
       notes: string | null;
+      prize_rank_1: number;
+      prize_rank_2: number;
+      prize_rank_3: number;
       status: "OPEN" | "LOCKED";
       is_archived: 0 | 1;
       locked_at: string | null;
     }>
   >(
-    `SELECT id, season_id, event_date, title, notes, status, is_archived, locked_at
+    `SELECT id, season_id, event_date, title, notes,
+            prize_rank_1, prize_rank_2, prize_rank_3,
+            status, is_archived, locked_at
      FROM events
      WHERE id = ?`,
     [eventId]
   );
   return events[0];
+}
+
+function validatePrizeRanks(prizeRanks: number[]) {
+  const unique = new Set(prizeRanks);
+  if (unique.size !== prizeRanks.length) {
+    return "Prijsrangen moeten uniek zijn.";
+  }
+  return null;
 }
 
 async function getParticipants(eventId: number) {
@@ -260,7 +286,8 @@ app.get("/api/events/:id", async (req, res) => {
   }
 
   const participants = await getParticipants(eventId);
-  const ranking = computeRanking(participants);
+  const prizeRanks = [event.prize_rank_1, event.prize_rank_2, event.prize_rank_3];
+  const ranking = computeRanking(participants, prizeRanks);
   const lockCheck = canLockEvent(ranking.participants, ranking.tieErrors);
 
   res.json({
@@ -269,6 +296,7 @@ app.get("/api/events/:id", async (req, res) => {
     eventDate: event.event_date,
     title: event.title,
     notes: event.notes,
+    prizeRanks,
     status: event.status,
     isArchived: Boolean(event.is_archived),
     lockedAt: event.locked_at,
@@ -284,7 +312,8 @@ app.get("/api/events/:id", async (req, res) => {
       rankR2: p.rank_r2,
       rankR3: p.rank_r3
     })),
-    winners: ranking.winners,
+    roundWinners: ranking.roundWinners,
+    eventWinner: ranking.eventWinner,
     tieErrors: ranking.tieErrors,
     canLock: lockCheck.allowed,
     lockReasons: lockCheck.reasons
@@ -320,6 +349,27 @@ app.patch("/api/events/:id", async (req, res) => {
   if (parsed.data.notes !== undefined) {
     updates.push("notes = ?");
     params.push(parsed.data.notes ?? null);
+  }
+  if (
+    parsed.data.prizeRank1 !== undefined ||
+    parsed.data.prizeRank2 !== undefined ||
+    parsed.data.prizeRank3 !== undefined
+  ) {
+    const nextPrizeRanks = [
+      parsed.data.prizeRank1 ?? event.prize_rank_1,
+      parsed.data.prizeRank2 ?? event.prize_rank_2,
+      parsed.data.prizeRank3 ?? event.prize_rank_3
+    ];
+    const prizeError = validatePrizeRanks(nextPrizeRanks);
+    if (prizeError) {
+      return res.status(400).json({ message: prizeError });
+    }
+    updates.push("prize_rank_1 = ?");
+    params.push(nextPrizeRanks[0]);
+    updates.push("prize_rank_2 = ?");
+    params.push(nextPrizeRanks[1]);
+    updates.push("prize_rank_3 = ?");
+    params.push(nextPrizeRanks[2]);
   }
   if (parsed.data.isArchived !== undefined) {
     updates.push("is_archived = ?");
@@ -433,7 +483,8 @@ app.post("/api/events/:id/lock", async (req, res) => {
   }
 
   const participants = await getParticipants(eventId);
-  const ranking = computeRanking(participants);
+  const prizeRanks = [event.prize_rank_1, event.prize_rank_2, event.prize_rank_3];
+  const ranking = computeRanking(participants, prizeRanks);
   const lockCheck = canLockEvent(ranking.participants, ranking.tieErrors);
 
   if (!lockCheck.allowed) {

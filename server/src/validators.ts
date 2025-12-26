@@ -26,14 +26,20 @@ export const createEventSchema = z.object({
   seasonId: z.number().int(),
   eventDate: z.string().min(1),
   title: z.string().nullable().optional(),
-  notes: z.string().nullable().optional()
+  notes: z.string().nullable().optional(),
+  prizeRank1: z.number().int().min(1).max(60).optional(),
+  prizeRank2: z.number().int().min(1).max(60).optional(),
+  prizeRank3: z.number().int().min(1).max(60).optional()
 });
 
 export const updateEventSchema = z.object({
   eventDate: z.string().min(1).optional(),
   title: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
-  isArchived: z.boolean().optional()
+  isArchived: z.boolean().optional(),
+  prizeRank1: z.number().int().min(1).max(60).optional(),
+  prizeRank2: z.number().int().min(1).max(60).optional(),
+  prizeRank3: z.number().int().min(1).max(60).optional()
 });
 
 export const addParticipantSchema = z.object({

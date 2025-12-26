@@ -17,7 +17,11 @@ export type RankedParticipant = ParticipantRow & {
 export type RankingResult = {
   participants: RankedParticipant[];
   tieErrors: string[];
-  winners: Array<{ rank: number; playerName: string }>;
+  roundWinners: Array<{
+    round: 1 | 2 | 3;
+    winners: Array<{ rank: number; playerName: string }>;
+  }>;
+  eventWinner: { rank: number; playerName: string } | null;
 };
 
 function hasAll(values: Array<number | null>) {
@@ -62,7 +66,10 @@ function computeRanks(
   return { ranks, tie };
 }
 
-export function computeRanking(rows: ParticipantRow[]): RankingResult {
+export function computeRanking(
+  rows: ParticipantRow[],
+  prizeRanks: number[] = [1, 18, 25]
+): RankingResult {
   const participants: RankedParticipant[] = rows.map((row) => {
     const totalPoints = hasAll([row.points_r1, row.points_r2, row.points_r3])
       ? (row.points_r1 ?? 0) + (row.points_r2 ?? 0) + (row.points_r3 ?? 0)
@@ -90,19 +97,31 @@ export function computeRanking(rows: ParticipantRow[]): RankingResult {
     p.rank_r3 = round3.ranks.get(p.id) ?? null;
   });
 
-  const winners: Array<{ rank: number; playerName: string }> = [];
-  const finalRanks = participants
-    .filter((p) => p.rank_r3 !== null)
-    .sort((a, b) => (a.rank_r3 ?? 0) - (b.rank_r3 ?? 0));
-
-  const winnerRanks = new Set([1, 18, 25]);
-  for (const p of finalRanks) {
-    if (p.rank_r3 && winnerRanks.has(p.rank_r3)) {
-      winners.push({ rank: p.rank_r3, playerName: p.player_name });
+  const roundWinners = ([1, 2, 3] as const).map((round) => {
+    const winners: Array<{ rank: number; playerName: string }> = [];
+    for (const rank of prizeRanks) {
+      const match = participants.find((p) => {
+        if (round === 1) return p.rank_r1 === rank;
+        if (round === 2) return p.rank_r2 === rank;
+        return p.rank_r3 === rank;
+      });
+      if (match) {
+        winners.push({ rank, playerName: match.player_name });
+      }
     }
-  }
+    return { round, winners };
+  });
 
-  return { participants, tieErrors, winners };
+  const eventWinner = participants.find((p) => p.rank_r3 === 1);
+
+  return {
+    participants,
+    tieErrors,
+    roundWinners,
+    eventWinner: eventWinner
+      ? { rank: 1, playerName: eventWinner.player_name }
+      : null
+  };
 }
 
 export function canLockEvent(participants: RankedParticipant[], tieErrors: string[]) {

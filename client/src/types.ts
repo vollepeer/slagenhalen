@@ -41,11 +41,16 @@ export type EventDetail = {
   eventDate: string;
   title: string | null;
   notes: string | null;
+  prizeRanks: number[];
   status: "OPEN" | "LOCKED";
   isArchived: boolean;
   lockedAt: string | null;
   participants: EventParticipant[];
-  winners: Array<{ rank: number; playerName: string }>;
+  roundWinners: Array<{
+    round: 1 | 2 | 3;
+    winners: Array<{ rank: number; playerName: string }>;
+  }>;
+  eventWinner: { rank: number; playerName: string } | null;
   tieErrors: string[];
   canLock: boolean;
   lockReasons: string[];
