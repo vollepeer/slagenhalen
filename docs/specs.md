@@ -6,7 +6,7 @@ Build a **single-user**, **offline-first**, locally running web application that
 Hard requirements:
 - Runs locally on a **MacBook** in a browser.
 - Works **fully offline** (no internet needed at runtime; no CDN usage).
-- Persists data in a local **MariaDB** database.
+- Persists data in local **JSON files on disk**.
 - UI built with **Material UI (MUI)**.
 - **All UI text is Dutch** (labels, buttons, dialogs, validation messages).
 - Reliability and trust are critical: calculations must be correct, deterministic, and validated server-side.
@@ -214,54 +214,58 @@ Behavior:
 
 ---
 
-## 8) Data model (MariaDB) and constraints
+## 8) Data model (JSON on disk) and constraints
 
-### Tables
+### File layout
+
+**db/data.json**
+- `meta.lastIds` tracks the last used numeric ID per collection.
+- `players`, `seasons`, `events`, `eventParticipants`, `auditLog` are stored as arrays.
+
+### Collections
 
 **players**
-- `id` BIGINT PK
-- `name` VARCHAR(255) NOT NULL UNIQUE
-- `is_active` BOOLEAN NOT NULL DEFAULT TRUE
-- `is_archived` BOOLEAN NOT NULL DEFAULT FALSE
-- `created_at`, `updated_at`
+- `id` number
+- `name` string (unique)
+- `isArchived` boolean
+- `createdAt`, `updatedAt` (ISO strings)
 
 **seasons**
-- `id` BIGINT PK
-- `name` VARCHAR(255) NOT NULL
-- `start_date` DATE NULL
-- `end_date` DATE NULL
-- `is_archived` BOOLEAN NOT NULL DEFAULT FALSE
-- `created_at`, `updated_at`
+- `id` number
+- `name` string
+- `startDate` string | null (YYYY-MM-DD)
+- `endDate` string | null (YYYY-MM-DD)
+- `isArchived` boolean
+- `createdAt`, `updatedAt` (ISO strings)
 
 **events**
-- `id` BIGINT PK
-- `season_id` BIGINT NOT NULL FK(seasons.id)
-- `event_date` DATE NOT NULL
-- `title` VARCHAR(255) NULL
-- `notes` TEXT NULL
-- `status` ENUM('OPEN','LOCKED') NOT NULL DEFAULT 'OPEN'
-- `locked_at` DATETIME NULL
-- `is_archived` BOOLEAN NOT NULL DEFAULT FALSE
-- `created_at`, `updated_at`
+- `id` number
+- `seasonId` number (references seasons)
+- `eventDate` string (YYYY-MM-DD)
+- `title` string | null
+- `notes` string | null
+- `prizeRank1`, `prizeRank2`, `prizeRank3` number
+- `status` "OPEN" | "LOCKED"
+- `lockedAt` string | null (ISO)
+- `isArchived` boolean
+- `createdAt`, `updatedAt` (ISO strings)
 
-**event_participants**
-- `id` BIGINT PK
-- `event_id` BIGINT NOT NULL FK(events.id)
-- `player_id` BIGINT NOT NULL FK(players.id)
-- `points_r1` INT UNSIGNED NULL
-- `points_r2` INT UNSIGNED NULL
-- `points_r3` INT UNSIGNED NULL
-- UNIQUE KEY `(event_id, player_id)`
-- `created_at`, `updated_at`
+**eventParticipants**
+- `id` number
+- `eventId` number (references events)
+- `playerId` number (references players)
+- `pointsR1`, `pointsR2`, `pointsR3` number | null
+- Unique `(eventId, playerId)`
+- `createdAt`, `updatedAt` (ISO strings)
 
-**(Recommended) audit_log**
-- `id` BIGINT PK
-- `entity_type` VARCHAR(50)
-- `entity_id` BIGINT
-- `action` VARCHAR(50)
-- `old_value_json` JSON
-- `new_value_json` JSON
-- `created_at` DATETIME
+**auditLog (recommended)**
+- `id` number
+- `entityType` string | null
+- `entityId` number | null
+- `action` string | null
+- `oldValueJson` JSON | null
+- `newValueJson` JSON | null
+- `createdAt` (ISO string)
 
 ### Validation to enforce server-side
 - Unique `players.name`.
@@ -273,7 +277,7 @@ Behavior:
 ---
 
 ## 9) Backend API (suggested; implement locally)
-Implement a local backend (Node.js) to access MariaDB.
+Implement a local backend (Node.js) that reads/writes JSON files on disk.
 
 Suggested routes (example):
 - Players:
@@ -328,7 +332,7 @@ Only if season is finished:
 
 ## 11) Reliability & offline requirements
 - No runtime external calls (no CDNs, no remote fonts).
-- Local DB persistence verified across restarts.
+- Local JSON persistence verified across restarts.
 - Locking logic must be enforced server-side (not only UI).
 - (Recommended) audit logging of score edits and locking actions.
 - (Recommended) export feature:

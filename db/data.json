@@ -1,0 +1,78 @@
+{
+  "meta": {
+    "lastIds": {
+      "players": 2,
+      "seasons": 1,
+      "events": 1,
+      "eventParticipants": 2,
+      "auditLog": 0
+    }
+  },
+  "players": [
+    {
+      "id": 1,
+      "name": "Jan",
+      "isArchived": false,
+      "createdAt": "2025-12-29T21:12:07.713Z",
+      "updatedAt": "2025-12-29T21:12:07.713Z"
+    },
+    {
+      "id": 2,
+      "name": "Evy",
+      "isArchived": false,
+      "createdAt": "2025-12-29T21:12:13.547Z",
+      "updatedAt": "2025-12-29T21:12:13.547Z"
+    }
+  ],
+  "seasons": [
+    {
+      "id": 1,
+      "name": "2025",
+      "startDate": null,
+      "endDate": null,
+      "isArchived": false,
+      "createdAt": "2025-12-29T21:11:22.988Z",
+      "updatedAt": "2025-12-29T21:11:22.988Z"
+    }
+  ],
+  "events": [
+    {
+      "id": 1,
+      "seasonId": 1,
+      "eventDate": "2025-12-29",
+      "title": null,
+      "notes": null,
+      "prizeRank1": 1,
+      "prizeRank2": 18,
+      "prizeRank3": 25,
+      "status": "OPEN",
+      "lockedAt": null,
+      "isArchived": false,
+      "createdAt": "2025-12-29T21:11:51.667Z",
+      "updatedAt": "2025-12-29T21:11:51.667Z"
+    }
+  ],
+  "eventParticipants": [
+    {
+      "id": 1,
+      "eventId": 1,
+      "playerId": 2,
+      "pointsR1": 2,
+      "pointsR2": 1,
+      "pointsR3": 3,
+      "createdAt": "2025-12-29T21:12:23.426Z",
+      "updatedAt": "2025-12-29T21:12:36.432Z"
+    },
+    {
+      "id": 2,
+      "eventId": 1,
+      "playerId": 1,
+      "pointsR1": 3,
+      "pointsR2": 6,
+      "pointsR3": 11,
+      "createdAt": "2025-12-29T21:12:25.735Z",
+      "updatedAt": "2025-12-29T21:13:13.359Z"
+    }
+  ],
+  "auditLog": []
+}

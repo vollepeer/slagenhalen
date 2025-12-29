@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import { pool, exec, query } from "./db.js";
 import { config } from "./config.js";
 import {
   addParticipantSchema,
@@ -13,35 +12,94 @@ import {
   updateSeasonSchema
 } from "./validators.js";
 import { canLockEvent, computeRanking, ParticipantRow } from "./ranking.js";
+import {
+  Event,
+  EventParticipant,
+  Player,
+  Season,
+  nextId,
+  readStore,
+  writeStore
+} from "./storage.js";
 
 const app = express();
 app.use(cors({ origin: config.corsOrigin }));
 app.use(express.json());
+
+const DUPLICATE_PLAYER = "DUPLICATE_PLAYER";
+const DUPLICATE_PARTICIPANT = "DUPLICATE_PARTICIPANT";
+const EVENT_NOT_FOUND = "EVENT_NOT_FOUND";
+const PLAYER_NOT_FOUND = "PLAYER_NOT_FOUND";
+const SEASON_NOT_FOUND = "SEASON_NOT_FOUND";
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function validatePrizeRanks(prizeRanks: number[]) {
+  const unique = new Set(prizeRanks);
+  if (unique.size !== prizeRanks.length) {
+    return "Prijsrangen moeten uniek zijn.";
+  }
+  return null;
+}
+
+async function getEventById(eventId: number) {
+  const store = await readStore();
+  return store.events.find((event) => event.id === eventId) ?? null;
+}
+
+async function getParticipants(eventId: number): Promise<ParticipantRow[]> {
+  const store = await readStore();
+  const participants = store.eventParticipants.filter(
+    (participant) => participant.eventId === eventId
+  );
+
+  const rows = participants
+    .map((participant) => {
+      const player = store.players.find((p) => p.id === participant.playerId);
+      if (!player) return null;
+      return {
+        id: participant.id,
+        player_id: participant.playerId,
+        player_name: player.name,
+        points_r1: participant.pointsR1,
+        points_r2: participant.pointsR2,
+        points_r3: participant.pointsR3
+      };
+    })
+    .filter((row): row is ParticipantRow => Boolean(row));
+
+  rows.sort((a, b) => a.player_name.localeCompare(b.player_name));
+  return rows;
+}
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
 app.get("/api/players", async (req, res) => {
-  const queryText = String(req.query.query || "");
+  const queryText = String(req.query.query || "").trim();
   const includeArchived = String(req.query.includeArchived || "false") === "true";
+  const normalizedQuery = queryText.toLowerCase();
 
-  const rows = await query<
-    Array<{ id: number; name: string; is_archived: 0 | 1 }>
-  >(
-    `SELECT id, name, is_archived
-     FROM players
-     WHERE (? = '' OR name LIKE ?)
-       AND (? = true OR is_archived = false)
-     ORDER BY name ASC`,
-    [queryText, `%${queryText}%`, includeArchived]
-  );
+  const store = await readStore();
+  const players = store.players
+    .filter((player) => includeArchived || !player.isArchived)
+    .filter((player) =>
+      normalizedQuery === "" ? true : player.name.toLowerCase().includes(normalizedQuery)
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   res.json(
-    rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      isArchived: Boolean(row.is_archived)
+    players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      isArchived: player.isArchived
     }))
   );
 });
@@ -52,13 +110,32 @@ app.post("/api/players", async (req, res) => {
     return res.status(400).json({ message: "Naam is verplicht." });
   }
 
+  const name = parsed.data.name.trim();
   try {
-    const result = await exec("INSERT INTO players (name) VALUES (?)", [
-      parsed.data.name.trim()
-    ]);
-    res.status(201).json({ id: result.insertId, name: parsed.data.name.trim() });
+    const player = await writeStore((store) => {
+      const exists = store.players.some(
+        (entry) => normalizeName(entry.name) === normalizeName(name)
+      );
+      if (exists) {
+        throw new Error(DUPLICATE_PLAYER);
+      }
+      const now = nowIso();
+      const newPlayer: Player = {
+        id: nextId(store, "players"),
+        name,
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.players.push(newPlayer);
+      return newPlayer;
+    });
+    res.status(201).json({ id: player.id, name: player.name });
   } catch (error) {
-    res.status(400).json({ message: "Spelernaam bestaat al." });
+    if (error instanceof Error && error.message === DUPLICATE_PLAYER) {
+      return res.status(400).json({ message: "Spelernaam bestaat al." });
+    }
+    throw error;
   }
 });
 
@@ -68,51 +145,69 @@ app.patch("/api/players/:id", async (req, res) => {
     return res.status(400).json({ message: "Ongeldige spelergegevens." });
   }
 
-  const updates: string[] = [];
-  const params: Array<string | number | boolean> = [];
-  if (parsed.data.name !== undefined) {
-    updates.push("name = ?");
-    params.push(parsed.data.name.trim());
-  }
-  if (parsed.data.isArchived !== undefined) {
-    updates.push("is_archived = ?");
-    params.push(parsed.data.isArchived);
+  const playerId = Number(req.params.id);
+  if (Number.isNaN(playerId)) {
+    return res.status(400).json({ message: "Ongeldige speler." });
   }
 
-  if (updates.length === 0) {
+  if (parsed.data.name === undefined && parsed.data.isArchived === undefined) {
     return res.status(400).json({ message: "Geen wijzigingen opgegeven." });
   }
 
-  params.push(Number(req.params.id));
-  await exec(`UPDATE players SET ${updates.join(", ")} WHERE id = ?`, params);
-  res.json({ ok: true });
+  try {
+    await writeStore((store) => {
+      const player = store.players.find((entry) => entry.id === playerId);
+      if (!player) {
+        return false;
+      }
+
+      let updated = false;
+      if (parsed.data.name !== undefined) {
+        const name = parsed.data.name.trim();
+        const exists = store.players.some(
+          (entry) =>
+            entry.id !== playerId && normalizeName(entry.name) === normalizeName(name)
+        );
+        if (exists) {
+          throw new Error(DUPLICATE_PLAYER);
+        }
+        player.name = name;
+        updated = true;
+      }
+      if (parsed.data.isArchived !== undefined) {
+        player.isArchived = parsed.data.isArchived;
+        updated = true;
+      }
+
+      if (updated) {
+        player.updatedAt = nowIso();
+      }
+      return updated;
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === DUPLICATE_PLAYER) {
+      return res.status(400).json({ message: "Spelernaam bestaat al." });
+    }
+    throw error;
+  }
 });
 
 app.get("/api/seasons", async (req, res) => {
   const includeArchived = String(req.query.includeArchived || "false") === "true";
-  const rows = await query<
-    Array<{
-      id: number;
-      name: string;
-      start_date: string | null;
-      end_date: string | null;
-      is_archived: 0 | 1;
-    }>
-  >(
-    `SELECT id, name, start_date, end_date, is_archived
-     FROM seasons
-     WHERE (? = true OR is_archived = false)
-     ORDER BY id DESC`,
-    [includeArchived]
-  );
+  const store = await readStore();
+  const seasons = store.seasons
+    .filter((season) => includeArchived || !season.isArchived)
+    .sort((a, b) => b.id - a.id);
 
   res.json(
-    rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      startDate: row.start_date,
-      endDate: row.end_date,
-      isArchived: Boolean(row.is_archived)
+    seasons.map((season) => ({
+      id: season.id,
+      name: season.name,
+      startDate: season.startDate,
+      endDate: season.endDate,
+      isArchived: season.isArchived
     }))
   );
 });
@@ -123,12 +218,23 @@ app.post("/api/seasons", async (req, res) => {
     return res.status(400).json({ message: "Seizoensnaam is verplicht." });
   }
 
-  const result = await exec(
-    "INSERT INTO seasons (name, start_date, end_date) VALUES (?, ?, ?)",
-    [parsed.data.name.trim(), parsed.data.startDate ?? null, parsed.data.endDate ?? null]
-  );
+  const name = parsed.data.name.trim();
+  const season = await writeStore((store) => {
+    const now = nowIso();
+    const newSeason: Season = {
+      id: nextId(store, "seasons"),
+      name,
+      startDate: parsed.data.startDate ?? null,
+      endDate: parsed.data.endDate ?? null,
+      isArchived: false,
+      createdAt: now,
+      updatedAt: now
+    };
+    store.seasons.push(newSeason);
+    return newSeason;
+  });
 
-  res.status(201).json({ id: result.insertId });
+  res.status(201).json({ id: season.id });
 });
 
 app.patch("/api/seasons/:id", async (req, res) => {
@@ -137,65 +243,70 @@ app.patch("/api/seasons/:id", async (req, res) => {
     return res.status(400).json({ message: "Ongeldige seizoensgegevens." });
   }
 
-  const updates: string[] = [];
-  const params: Array<string | number | boolean | null> = [];
-  if (parsed.data.name !== undefined) {
-    updates.push("name = ?");
-    params.push(parsed.data.name.trim());
-  }
-  if (parsed.data.startDate !== undefined) {
-    updates.push("start_date = ?");
-    params.push(parsed.data.startDate ?? null);
-  }
-  if (parsed.data.endDate !== undefined) {
-    updates.push("end_date = ?");
-    params.push(parsed.data.endDate ?? null);
-  }
-  if (parsed.data.isArchived !== undefined) {
-    updates.push("is_archived = ?");
-    params.push(parsed.data.isArchived);
+  const seasonId = Number(req.params.id);
+  if (Number.isNaN(seasonId)) {
+    return res.status(400).json({ message: "Ongeldig seizoen." });
   }
 
-  if (updates.length === 0) {
+  if (
+    parsed.data.name === undefined &&
+    parsed.data.startDate === undefined &&
+    parsed.data.endDate === undefined &&
+    parsed.data.isArchived === undefined
+  ) {
     return res.status(400).json({ message: "Geen wijzigingen opgegeven." });
   }
 
-  params.push(Number(req.params.id));
-  await exec(`UPDATE seasons SET ${updates.join(", ")} WHERE id = ?`, params);
+  await writeStore((store) => {
+    const season = store.seasons.find((entry) => entry.id === seasonId);
+    if (!season) {
+      return false;
+    }
+    let updated = false;
+    if (parsed.data.name !== undefined) {
+      season.name = parsed.data.name.trim();
+      updated = true;
+    }
+    if (parsed.data.startDate !== undefined) {
+      season.startDate = parsed.data.startDate ?? null;
+      updated = true;
+    }
+    if (parsed.data.endDate !== undefined) {
+      season.endDate = parsed.data.endDate ?? null;
+      updated = true;
+    }
+    if (parsed.data.isArchived !== undefined) {
+      season.isArchived = parsed.data.isArchived;
+      updated = true;
+    }
+    if (updated) {
+      season.updatedAt = nowIso();
+    }
+    return updated;
+  });
+
   res.json({ ok: true });
 });
 
 app.get("/api/events", async (req, res) => {
   const includeArchived = String(req.query.includeArchived || "false") === "true";
   const seasonId = req.query.seasonId ? Number(req.query.seasonId) : null;
-  const rows = await query<
-    Array<{
-      id: number;
-      season_id: number;
-      event_date: string;
-      title: string | null;
-      notes: string | null;
-      status: "OPEN" | "LOCKED";
-      is_archived: 0 | 1;
-    }>
-  >(
-    `SELECT id, season_id, event_date, title, notes, status, is_archived
-     FROM events
-     WHERE (? IS NULL OR season_id = ?)
-       AND (? = true OR is_archived = false)
-     ORDER BY event_date DESC`,
-    [seasonId, seasonId, includeArchived]
-  );
+
+  const store = await readStore();
+  const events = store.events
+    .filter((event) => (seasonId === null ? true : event.seasonId === seasonId))
+    .filter((event) => includeArchived || !event.isArchived)
+    .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
 
   res.json(
-    rows.map((row) => ({
-      id: row.id,
-      seasonId: row.season_id,
-      eventDate: row.event_date,
-      title: row.title,
-      notes: row.notes,
-      status: row.status,
-      isArchived: Boolean(row.is_archived)
+    events.map((event) => ({
+      id: event.id,
+      seasonId: event.seasonId,
+      eventDate: event.eventDate,
+      title: event.title,
+      notes: event.notes,
+      status: event.status,
+      isArchived: event.isArchived
     }))
   );
 });
@@ -216,67 +327,40 @@ app.post("/api/events", async (req, res) => {
     return res.status(400).json({ message: prizeError });
   }
 
-  const result = await exec(
-    "INSERT INTO events (season_id, event_date, title, notes, prize_rank_1, prize_rank_2, prize_rank_3) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [
-      parsed.data.seasonId,
-      parsed.data.eventDate,
-      parsed.data.title ?? null,
-      parsed.data.notes ?? null,
-      prizeRanks[0],
-      prizeRanks[1],
-      prizeRanks[2]
-    ]
-  );
+  try {
+    const event = await writeStore((store) => {
+      const season = store.seasons.find((entry) => entry.id === parsed.data.seasonId);
+      if (!season) {
+        throw new Error(SEASON_NOT_FOUND);
+      }
+      const now = nowIso();
+      const newEvent: Event = {
+        id: nextId(store, "events"),
+        seasonId: parsed.data.seasonId,
+        eventDate: parsed.data.eventDate,
+        title: parsed.data.title ?? null,
+        notes: parsed.data.notes ?? null,
+        prizeRank1: prizeRanks[0],
+        prizeRank2: prizeRanks[1],
+        prizeRank3: prizeRanks[2],
+        status: "OPEN",
+        lockedAt: null,
+        isArchived: false,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.events.push(newEvent);
+      return newEvent;
+    });
 
-  res.status(201).json({ id: result.insertId });
-});
-
-async function getEventById(eventId: number) {
-  const events = await query<
-    Array<{
-      id: number;
-      season_id: number;
-      event_date: string;
-      title: string | null;
-      notes: string | null;
-      prize_rank_1: number;
-      prize_rank_2: number;
-      prize_rank_3: number;
-      status: "OPEN" | "LOCKED";
-      is_archived: 0 | 1;
-      locked_at: string | null;
-    }>
-  >(
-    `SELECT id, season_id, event_date, title, notes,
-            prize_rank_1, prize_rank_2, prize_rank_3,
-            status, is_archived, locked_at
-     FROM events
-     WHERE id = ?`,
-    [eventId]
-  );
-  return events[0];
-}
-
-function validatePrizeRanks(prizeRanks: number[]) {
-  const unique = new Set(prizeRanks);
-  if (unique.size !== prizeRanks.length) {
-    return "Prijsrangen moeten uniek zijn.";
+    res.status(201).json({ id: event.id });
+  } catch (error) {
+    if (error instanceof Error && error.message === SEASON_NOT_FOUND) {
+      return res.status(404).json({ message: "Seizoen niet gevonden." });
+    }
+    throw error;
   }
-  return null;
-}
-
-async function getParticipants(eventId: number) {
-  return query<ParticipantRow[]>(
-    `SELECT ep.id, ep.player_id, p.name as player_name,
-            ep.points_r1, ep.points_r2, ep.points_r3
-     FROM event_participants ep
-     JOIN players p ON p.id = ep.player_id
-     WHERE ep.event_id = ?
-     ORDER BY p.name ASC`,
-    [eventId]
-  );
-}
+});
 
 app.get("/api/events/:id", async (req, res) => {
   const eventId = Number(req.params.id);
@@ -286,31 +370,31 @@ app.get("/api/events/:id", async (req, res) => {
   }
 
   const participants = await getParticipants(eventId);
-  const prizeRanks = [event.prize_rank_1, event.prize_rank_2, event.prize_rank_3];
+  const prizeRanks = [event.prizeRank1, event.prizeRank2, event.prizeRank3];
   const ranking = computeRanking(participants, prizeRanks);
   const lockCheck = canLockEvent(ranking.participants, ranking.tieErrors);
 
   res.json({
     id: event.id,
-    seasonId: event.season_id,
-    eventDate: event.event_date,
+    seasonId: event.seasonId,
+    eventDate: event.eventDate,
     title: event.title,
     notes: event.notes,
     prizeRanks,
     status: event.status,
-    isArchived: Boolean(event.is_archived),
-    lockedAt: event.locked_at,
-    participants: ranking.participants.map((p) => ({
-      id: p.id,
-      playerId: p.player_id,
-      playerName: p.player_name,
-      pointsR1: p.points_r1,
-      pointsR2: p.points_r2,
-      pointsR3: p.points_r3,
-      totalPoints: p.total_points,
-      rankR1: p.rank_r1,
-      rankR2: p.rank_r2,
-      rankR3: p.rank_r3
+    isArchived: event.isArchived,
+    lockedAt: event.lockedAt,
+    participants: ranking.participants.map((participant) => ({
+      id: participant.id,
+      playerId: participant.player_id,
+      playerName: participant.player_name,
+      pointsR1: participant.points_r1,
+      pointsR2: participant.points_r2,
+      pointsR3: participant.points_r3,
+      totalPoints: participant.total_points,
+      rankR1: participant.rank_r1,
+      rankR2: participant.rank_r2,
+      rankR3: participant.rank_r3
     })),
     roundWinners: ranking.roundWinners,
     eventWinner: ranking.eventWinner,
@@ -336,52 +420,64 @@ app.patch("/api/events/:id", async (req, res) => {
     return res.status(400).json({ message: "Kaartavond is vergrendeld." });
   }
 
-  const updates: string[] = [];
-  const params: Array<string | number | boolean | null> = [];
-  if (parsed.data.eventDate !== undefined) {
-    updates.push("event_date = ?");
-    params.push(parsed.data.eventDate);
+  if (
+    parsed.data.eventDate === undefined &&
+    parsed.data.title === undefined &&
+    parsed.data.notes === undefined &&
+    parsed.data.isArchived === undefined &&
+    parsed.data.prizeRank1 === undefined &&
+    parsed.data.prizeRank2 === undefined &&
+    parsed.data.prizeRank3 === undefined
+  ) {
+    return res.status(400).json({ message: "Geen wijzigingen opgegeven." });
   }
-  if (parsed.data.title !== undefined) {
-    updates.push("title = ?");
-    params.push(parsed.data.title ?? null);
-  }
-  if (parsed.data.notes !== undefined) {
-    updates.push("notes = ?");
-    params.push(parsed.data.notes ?? null);
-  }
+
+  let nextPrizeRanks: number[] | null = null;
   if (
     parsed.data.prizeRank1 !== undefined ||
     parsed.data.prizeRank2 !== undefined ||
     parsed.data.prizeRank3 !== undefined
   ) {
-    const nextPrizeRanks = [
-      parsed.data.prizeRank1 ?? event.prize_rank_1,
-      parsed.data.prizeRank2 ?? event.prize_rank_2,
-      parsed.data.prizeRank3 ?? event.prize_rank_3
+    nextPrizeRanks = [
+      parsed.data.prizeRank1 ?? event.prizeRank1,
+      parsed.data.prizeRank2 ?? event.prizeRank2,
+      parsed.data.prizeRank3 ?? event.prizeRank3
     ];
     const prizeError = validatePrizeRanks(nextPrizeRanks);
     if (prizeError) {
       return res.status(400).json({ message: prizeError });
     }
-    updates.push("prize_rank_1 = ?");
-    params.push(nextPrizeRanks[0]);
-    updates.push("prize_rank_2 = ?");
-    params.push(nextPrizeRanks[1]);
-    updates.push("prize_rank_3 = ?");
-    params.push(nextPrizeRanks[2]);
-  }
-  if (parsed.data.isArchived !== undefined) {
-    updates.push("is_archived = ?");
-    params.push(parsed.data.isArchived);
   }
 
-  if (updates.length === 0) {
-    return res.status(400).json({ message: "Geen wijzigingen opgegeven." });
-  }
+  await writeStore((store) => {
+    const current = store.events.find((entry) => entry.id === eventId);
+    if (!current) {
+      throw new Error(EVENT_NOT_FOUND);
+    }
+    const updates: Partial<Event> = {};
+    if (parsed.data.eventDate !== undefined) {
+      updates.eventDate = parsed.data.eventDate;
+    }
+    if (parsed.data.title !== undefined) {
+      updates.title = parsed.data.title ?? null;
+    }
+    if (parsed.data.notes !== undefined) {
+      updates.notes = parsed.data.notes ?? null;
+    }
+    if (nextPrizeRanks) {
+      updates.prizeRank1 = nextPrizeRanks[0];
+      updates.prizeRank2 = nextPrizeRanks[1];
+      updates.prizeRank3 = nextPrizeRanks[2];
+    }
+    if (parsed.data.isArchived !== undefined) {
+      updates.isArchived = parsed.data.isArchived;
+    }
 
-  params.push(eventId);
-  await exec(`UPDATE events SET ${updates.join(", ")} WHERE id = ?`, params);
+    Object.assign(current, updates);
+    current.updatedAt = nowIso();
+    return true;
+  });
+
   res.json({ ok: true });
 });
 
@@ -400,32 +496,59 @@ app.post("/api/events/:id/participants", async (req, res) => {
     return res.status(400).json({ message: "Kaartavond is vergrendeld." });
   }
 
-  const countRows = await query<Array<{ count: number }>>(
-    "SELECT COUNT(*) as count FROM event_participants WHERE event_id = ?",
-    [eventId]
-  );
-  if (countRows[0].count >= 60) {
-    return res.status(400).json({ message: "Maximaal 60 deelnemers toegestaan." });
-  }
-
-  const playerRows = await query<
-    Array<{ id: number; is_archived: 0 | 1 }>
-  >("SELECT id, is_archived FROM players WHERE id = ?", [parsed.data.playerId]);
-  if (!playerRows[0]) {
-    return res.status(404).json({ message: "Speler niet gevonden." });
-  }
-  if (playerRows[0].is_archived) {
-    return res.status(400).json({ message: "Gearchiveerde speler kan niet worden toegevoegd." });
-  }
-
   try {
-    const result = await exec(
-      "INSERT INTO event_participants (event_id, player_id) VALUES (?, ?)",
-      [eventId, parsed.data.playerId]
-    );
-    res.status(201).json({ id: result.insertId });
+    const participant = await writeStore((store) => {
+      const participants = store.eventParticipants.filter(
+        (entry) => entry.eventId === eventId
+      );
+      if (participants.length >= 60) {
+        throw new Error("MAX_PARTICIPANTS");
+      }
+      const player = store.players.find((entry) => entry.id === parsed.data.playerId);
+      if (!player) {
+        throw new Error(PLAYER_NOT_FOUND);
+      }
+      if (player.isArchived) {
+        throw new Error("ARCHIVED_PLAYER");
+      }
+      const exists = store.eventParticipants.some(
+        (entry) => entry.eventId === eventId && entry.playerId === parsed.data.playerId
+      );
+      if (exists) {
+        throw new Error(DUPLICATE_PARTICIPANT);
+      }
+      const now = nowIso();
+      const newParticipant: EventParticipant = {
+        id: nextId(store, "eventParticipants"),
+        eventId,
+        playerId: parsed.data.playerId,
+        pointsR1: null,
+        pointsR2: null,
+        pointsR3: null,
+        createdAt: now,
+        updatedAt: now
+      };
+      store.eventParticipants.push(newParticipant);
+      return newParticipant;
+    });
+
+    res.status(201).json({ id: participant.id });
   } catch (error) {
-    res.status(400).json({ message: "Speler is al toegevoegd." });
+    if (error instanceof Error && error.message === "MAX_PARTICIPANTS") {
+      return res.status(400).json({ message: "Maximaal 60 deelnemers toegestaan." });
+    }
+    if (error instanceof Error && error.message === PLAYER_NOT_FOUND) {
+      return res.status(404).json({ message: "Speler niet gevonden." });
+    }
+    if (error instanceof Error && error.message === "ARCHIVED_PLAYER") {
+      return res
+        .status(400)
+        .json({ message: "Gearchiveerde speler kan niet worden toegevoegd." });
+    }
+    if (error instanceof Error && error.message === DUPLICATE_PARTICIPANT) {
+      return res.status(400).json({ message: "Speler is al toegevoegd." });
+    }
+    throw error;
   }
 });
 
@@ -444,30 +567,47 @@ app.patch("/api/events/:eventId/participants/:participantId", async (req, res) =
     return res.status(400).json({ message: "Kaartavond is vergrendeld." });
   }
 
-  const updates: string[] = [];
-  const params: Array<number | null> = [];
-  if (parsed.data.pointsR1 !== undefined) {
-    updates.push("points_r1 = ?");
-    params.push(parsed.data.pointsR1 === null ? null : parsed.data.pointsR1);
-  }
-  if (parsed.data.pointsR2 !== undefined) {
-    updates.push("points_r2 = ?");
-    params.push(parsed.data.pointsR2 === null ? null : parsed.data.pointsR2);
-  }
-  if (parsed.data.pointsR3 !== undefined) {
-    updates.push("points_r3 = ?");
-    params.push(parsed.data.pointsR3 === null ? null : parsed.data.pointsR3);
+  const participantId = Number(req.params.participantId);
+  if (Number.isNaN(participantId)) {
+    return res.status(400).json({ message: "Ongeldige deelnemer." });
   }
 
-  if (updates.length === 0) {
+  if (
+    parsed.data.pointsR1 === undefined &&
+    parsed.data.pointsR2 === undefined &&
+    parsed.data.pointsR3 === undefined
+  ) {
     return res.status(400).json({ message: "Geen wijzigingen opgegeven." });
   }
 
-  params.push(Number(req.params.participantId));
-  await exec(
-    `UPDATE event_participants SET ${updates.join(", ")} WHERE id = ?`,
-    params
-  );
+  await writeStore((store) => {
+    const participant = store.eventParticipants.find(
+      (entry) => entry.id === participantId
+    );
+    if (!participant) {
+      return false;
+    }
+    let updated = false;
+    if (parsed.data.pointsR1 !== undefined) {
+      participant.pointsR1 =
+        parsed.data.pointsR1 === null ? null : parsed.data.pointsR1;
+      updated = true;
+    }
+    if (parsed.data.pointsR2 !== undefined) {
+      participant.pointsR2 =
+        parsed.data.pointsR2 === null ? null : parsed.data.pointsR2;
+      updated = true;
+    }
+    if (parsed.data.pointsR3 !== undefined) {
+      participant.pointsR3 =
+        parsed.data.pointsR3 === null ? null : parsed.data.pointsR3;
+      updated = true;
+    }
+    if (updated) {
+      participant.updatedAt = nowIso();
+    }
+    return updated;
+  });
 
   res.json({ ok: true });
 });
@@ -483,7 +623,7 @@ app.post("/api/events/:id/lock", async (req, res) => {
   }
 
   const participants = await getParticipants(eventId);
-  const prizeRanks = [event.prize_rank_1, event.prize_rank_2, event.prize_rank_3];
+  const prizeRanks = [event.prizeRank1, event.prizeRank2, event.prizeRank3];
   const ranking = computeRanking(participants, prizeRanks);
   const lockCheck = canLockEvent(ranking.participants, ranking.tieErrors);
 
@@ -494,15 +634,25 @@ app.post("/api/events/:id/lock", async (req, res) => {
     });
   }
 
-  await exec(
-    "UPDATE events SET status = 'LOCKED', locked_at = NOW() WHERE id = ?",
-    [eventId]
-  );
-
-  await exec(
-    "INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('event', ?, 'LOCKED')",
-    [eventId]
-  );
+  await writeStore((store) => {
+    const current = store.events.find((entry) => entry.id === eventId);
+    if (!current) {
+      throw new Error(EVENT_NOT_FOUND);
+    }
+    const now = nowIso();
+    current.status = "LOCKED";
+    current.lockedAt = now;
+    current.updatedAt = now;
+    store.auditLog.push({
+      id: nextId(store, "auditLog"),
+      entityType: "event",
+      entityId: eventId,
+      action: "LOCKED",
+      oldValueJson: null,
+      newValueJson: null,
+      createdAt: now
+    });
+  });
 
   res.json({ ok: true });
 });
@@ -517,29 +667,35 @@ app.post("/api/events/:id/unlock", async (req, res) => {
     return res.status(400).json({ message: "Kaartavond is al open." });
   }
 
-  await exec(
-    "UPDATE events SET status = 'OPEN', locked_at = NULL WHERE id = ?",
-    [eventId]
-  );
-
-  await exec(
-    "INSERT INTO audit_log (entity_type, entity_id, action) VALUES ('event', ?, 'UNLOCKED')",
-    [eventId]
-  );
+  await writeStore((store) => {
+    const current = store.events.find((entry) => entry.id === eventId);
+    if (!current) {
+      throw new Error(EVENT_NOT_FOUND);
+    }
+    const now = nowIso();
+    current.status = "OPEN";
+    current.lockedAt = null;
+    current.updatedAt = now;
+    store.auditLog.push({
+      id: nextId(store, "auditLog"),
+      entityType: "event",
+      entityId: eventId,
+      action: "UNLOCKED",
+      oldValueJson: null,
+      newValueJson: null,
+      createdAt: now
+    });
+  });
 
   res.json({ ok: true });
 });
 
 app.get("/api/seasons/:id/ranking", async (req, res) => {
   const seasonId = Number(req.params.id);
-  const events = await query<
-    Array<{ id: number; status: "OPEN" | "LOCKED"; is_archived: 0 | 1 }>
-  >(
-    "SELECT id, status, is_archived FROM events WHERE season_id = ?",
-    [seasonId]
-  );
+  const store = await readStore();
 
-  const relevant = events.filter((event) => !event.is_archived);
+  const events = store.events.filter((event) => event.seasonId === seasonId);
+  const relevant = events.filter((event) => !event.isArchived);
   const openEvents = relevant.filter((event) => event.status !== "LOCKED");
   if (openEvents.length > 0) {
     return res.json({
@@ -550,24 +706,40 @@ app.get("/api/seasons/:id/ranking", async (req, res) => {
     });
   }
 
-  const rows = await query<
-    Array<{ player_id: number; player_name: string; total_points: number }>
-  >(
-    `SELECT ep.player_id, p.name as player_name,
-            (ep.points_r1 + ep.points_r2 + ep.points_r3) as total_points
-     FROM event_participants ep
-     JOIN events e ON e.id = ep.event_id
-     JOIN players p ON p.id = ep.player_id
-     WHERE e.season_id = ?
-       AND e.status = 'LOCKED'
-       AND e.is_archived = false
-       AND ep.points_r1 IS NOT NULL
-       AND ep.points_r2 IS NOT NULL
-       AND ep.points_r3 IS NOT NULL`,
-    [seasonId]
+  const lockedEventIds = new Set(
+    relevant.filter((event) => event.status === "LOCKED").map((event) => event.id)
   );
 
-  const totals = new Map<number, { playerId: number; playerName: string; total: number; appearances: number }>();
+  const rows = store.eventParticipants
+    .filter((participant) => lockedEventIds.has(participant.eventId))
+    .filter(
+      (participant) =>
+        participant.pointsR1 !== null &&
+        participant.pointsR2 !== null &&
+        participant.pointsR3 !== null
+    )
+    .map((participant) => {
+      const player = store.players.find((entry) => entry.id === participant.playerId);
+      if (!player) {
+        return null;
+      }
+      return {
+        player_id: participant.playerId,
+        player_name: player.name,
+        total_points:
+          (participant.pointsR1 ?? 0) +
+          (participant.pointsR2 ?? 0) +
+          (participant.pointsR3 ?? 0)
+      };
+    })
+    .filter((row): row is { player_id: number; player_name: string; total_points: number } =>
+      Boolean(row)
+    );
+
+  const totals = new Map<
+    number,
+    { playerId: number; playerName: string; total: number; appearances: number }
+  >();
   for (const row of rows) {
     const entry = totals.get(row.player_id) || {
       playerId: row.player_id,
@@ -601,15 +773,17 @@ app.get("/api/seasons/:id/ranking", async (req, res) => {
   });
 });
 
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  res.status(500).json({ message: "Interne serverfout.", detail: err.message });
-});
+app.use(
+  (
+    err: Error,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    res.status(500).json({ message: "Interne serverfout.", detail: err.message });
+  }
+);
 
 app.listen(config.port, () => {
   console.log(`API running on http://localhost:${config.port}`);
-});
-
-process.on("SIGINT", async () => {
-  await pool.end();
-  process.exit(0);
 });

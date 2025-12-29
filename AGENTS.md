@@ -29,6 +29,6 @@
   - Notes on how to verify locally.
 
 ## Security & Configuration Tips
-- The app must run fully offline and use a local MariaDB instance.
+- The app must run fully offline and use JSON files on disk for persistence.
 - Do not introduce runtime CDN dependencies; bundle assets locally.
-- Keep configuration local and explicit (for example: `.env` entries for DB host, user, and database).
+- Keep configuration local and explicit (for example: `.env` entries for `DATA_PATH`).
