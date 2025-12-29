@@ -6,7 +6,7 @@ Build a **single-user**, **offline-first**, locally running web application that
 Hard requirements:
 - Runs locally on a **MacBook** in a browser.
 - Works **fully offline** (no internet needed at runtime; no CDN usage).
-- Persists data in local **JSON files on disk**.
+- Persists data in local **browser storage**.
 - UI built with **Material UI (MUI)**.
 - **All UI text is Dutch** (labels, buttons, dialogs, validation messages).
 - Reliability and trust are critical: calculations must be correct, deterministic, and validated server-side.
@@ -214,12 +214,12 @@ Behavior:
 
 ---
 
-## 8) Data model (JSON on disk) and constraints
+## 8) Data model (browser storage) and constraints
 
-### File layout
+### Storage layout
 
-**db/data.json**
-- `meta.lastIds` tracks the last used numeric ID per collection.
+**localStorage**
+- `filip-card-data` stores a JSON object with `meta.lastIds`.
 - `players`, `seasons`, `events`, `eventParticipants`, `auditLog` are stored as arrays.
 
 ### Collections
@@ -277,7 +277,7 @@ Behavior:
 ---
 
 ## 9) Backend API (suggested; implement locally)
-Implement a local backend (Node.js) that reads/writes JSON files on disk.
+Implement a local data layer in the client that reads/writes browser storage.
 
 Suggested routes (example):
 - Players:
@@ -332,7 +332,7 @@ Only if season is finished:
 
 ## 11) Reliability & offline requirements
 - No runtime external calls (no CDNs, no remote fonts).
-- Local JSON persistence verified across restarts.
+- Local browser persistence verified across restarts.
 - Locking logic must be enforced server-side (not only UI).
 - (Recommended) audit logging of score edits and locking actions.
 - (Recommended) export feature:

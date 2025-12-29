@@ -5,6 +5,7 @@ import { SeasonsPage } from "./pages/SeasonsPage";
 import { EventsPage } from "./pages/EventsPage";
 import { EventDetailPage } from "./pages/EventDetailPage";
 import { RankingPage } from "./pages/RankingPage";
+import { DataPage } from "./pages/DataPage";
 
 const mainTabs = [
   { label: "Kaartavonden", path: "/events" },
@@ -13,7 +14,8 @@ const mainTabs = [
 
 const settingsTabs = [
   { label: "Seizoenen", path: "/" },
-  { label: "Spelers", path: "/players" }
+  { label: "Spelers", path: "/players" },
+  { label: "Databeheer", path: "/data" }
 ];
 
 export function App() {
@@ -91,6 +93,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<SeasonsPage />} />
           <Route path="/players" element={<PlayersPage />} />
+          <Route path="/data" element={<DataPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:id" element={<EventDetailPage />} />
           <Route path="/ranking" element={<RankingPage />} />

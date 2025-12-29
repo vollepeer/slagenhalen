@@ -1,24 +1,23 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3001";
+import { handleGet, handleSend } from "./localApi";
 
 export async function apiGet<T>(path: string) {
-  const response = await fetch(`${API_BASE}${path}`);
-  if (!response.ok) {
-    throw new Error(await response.text());
+  try {
+    return (await handleGet(path)) as T;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(error.message);
+    }
+    throw error;
   }
-  return (await response.json()) as T;
 }
 
 export async function apiSend<T>(path: string, method: string, body?: unknown) {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text);
+  try {
+    return (await handleSend(path, method, body)) as T;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(error.message);
+    }
+    throw error;
   }
-
-  return (await response.json()) as T;
 }

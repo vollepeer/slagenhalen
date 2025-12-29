@@ -1,18 +1,10 @@
 # Filip Card
 
-Offline score- en rangschikkingsapp voor wekelijkse kaartavonden (Nederlandse UI) met JSON-opslag op schijf.
+Offline score- en rangschikkingsapp voor wekelijkse kaartavonden (Nederlandse UI) met lokale browseropslag (geen backend).
 
 ## Lokale setup
 
-1) Start de API:
-
-```bash
-cd server
-npm install
-npm run dev
-```
-
-2) Start de client:
+1) Start de client:
 
 ```bash
 cd client
@@ -20,13 +12,15 @@ npm install
 npm run dev
 ```
 
-De app draait op `http://localhost:5173` en de API op `http://localhost:3001`.
+De app draait op `http://localhost:5173` zonder aparte API.
 
 ## Configuratie
 
-- Server configuratie via `server/.env` (zie `server/.env.example`).
-- De client gebruikt `VITE_API_BASE` indien nodig (anders `http://localhost:3001`).
-- Data wordt lokaal opgeslagen in `db/data.json` (optioneel te verplaatsen via `DATA_PATH`).
+- Data wordt lokaal opgeslagen in de browser (localStorage).
+
+## Databeheer
+
+- Gebruik de tab “Databeheer” om back-ups te exporteren, importeren of alle data te wissen.
 
 ## Specificaties
 

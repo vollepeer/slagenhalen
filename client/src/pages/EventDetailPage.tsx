@@ -320,7 +320,7 @@ export function EventDetailPage() {
               {rankingDisplay.rows.map((participant) => {
                 const active = rankingDisplay.activeById.get(participant.id);
                 const tieColor =
-                  active?.score !== null
+                  active?.score !== null && active?.score !== undefined
                     ? rankingDisplay.tieColorByScore.get(active.score)
                     : undefined;
                 return (
