@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -34,11 +34,30 @@ function buildExportFilename() {
   return `filip-card-backup-${stamp}.json`;
 }
 
+function buildAutoBackupFilename() {
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("");
+  const time = [
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0")
+  ].join("");
+  return `slagen-backup-${stamp}-${time}.json`;
+}
+
 export function DataPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [playerImportText, setPlayerImportText] = useState("");
+  const [autoBackupSeconds, setAutoBackupSeconds] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("filip-card-auto-backup-seconds") || "";
+  });
 
   const handleExport = () => {
     try {
@@ -78,6 +97,27 @@ export function DataPage() {
       setSuccess(null);
     }
   };
+
+  const handleAutoBackup = () => {
+    const payload = exportStore();
+    downloadFile(payload, buildAutoBackupFilename(), "application/json");
+  };
+
+  useEffect(() => {
+    const seconds = Number(autoBackupSeconds);
+    if (autoBackupSeconds.trim() !== "") {
+      localStorage.setItem("filip-card-auto-backup-seconds", autoBackupSeconds);
+    } else {
+      localStorage.removeItem("filip-card-auto-backup-seconds");
+    }
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      handleAutoBackup();
+    }, seconds * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [autoBackupSeconds]);
 
   const handleImportPlayers = () => {
     const lines = playerImportText
@@ -202,6 +242,37 @@ export function DataPage() {
             <Divider />
             <Button variant="contained" onClick={handleImportPlayers}>
               Importeer spelers
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6">Automatische back-ups</Typography>
+            <TextField
+              label="Interval (seconden)"
+              type="number"
+              inputProps={{ min: 10 }}
+              value={autoBackupSeconds}
+              onChange={(event) => setAutoBackupSeconds(event.target.value)}
+              helperText="Laat leeg om automatische back-ups uit te zetten."
+              fullWidth
+            />
+            <Button
+              variant="outlined"
+              onClick={() => {
+                if (!autoBackupSeconds.trim()) {
+                  setError("Vul een interval in.");
+                  setSuccess(null);
+                  return;
+                }
+                setSuccess("Automatische back-ups ingesteld.");
+                setError(null);
+              }}
+            >
+              Activeer automatische back-ups
             </Button>
           </Stack>
         </CardContent>
