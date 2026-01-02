@@ -22,6 +22,12 @@ De app draait op `http://localhost:5173` zonder aparte API.
 
 - Gebruik de tab “Databeheer” om back-ups te exporteren, importeren of alle data te wissen.
 
+## Lokale preview zonder Node
+
+1) Build de client: `cd client && npm run build`
+2) Start de lokale server: `./serve.sh` (of `./serve-spa.sh` voor SPA refresh)
+3) Open `http://localhost:8000`
+
 ## Specificaties
 
 Lees `docs/specs.md` voor alle bedrijfsregels, data model en acceptatietests.
