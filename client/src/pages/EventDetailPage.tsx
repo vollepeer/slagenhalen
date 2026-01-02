@@ -93,24 +93,6 @@ export function EventDetailPage() {
       return { participant, rank: null, score: null };
     });
 
-    const scoreCounts = new Map<number, number>();
-    snapshots.forEach((entry) => {
-      if (entry.score !== null) {
-        scoreCounts.set(entry.score, (scoreCounts.get(entry.score) ?? 0) + 1);
-      }
-    });
-
-    const tieColorByScore = new Map<number, string>();
-    let tieIndex = 0;
-    snapshots.forEach((entry) => {
-      if (entry.score !== null && (scoreCounts.get(entry.score) ?? 0) > 1) {
-        if (!tieColorByScore.has(entry.score)) {
-          tieColorByScore.set(entry.score, tieColors[tieIndex % tieColors.length]);
-          tieIndex += 1;
-        }
-      }
-    });
-
     const activeById = new Map<number, { rank: number | null; score: number | null }>();
     snapshots.forEach((entry) => {
       activeById.set(entry.participant.id, { rank: entry.rank, score: entry.score });
@@ -167,9 +149,9 @@ export function EventDetailPage() {
     return {
       rows: sorted.map((entry) => entry.participant),
       activeById,
-      tieColorByScore
+      tieColorByScore: new Map<number, string>()
     };
-  }, [event, sortDirection, sortKey, tieColors]);
+  }, [event, sortDirection, sortKey]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
