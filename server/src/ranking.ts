@@ -135,7 +135,7 @@ export function canLockEvent(participants: RankedParticipant[], tieErrors: strin
     [p.points_r1, p.points_r2, p.points_r3].some((value) => value === null)
   );
   if (missingScores) {
-    reasons.push("Missing scores for one or more rounds");
+    reasons.push("Ontbrekende scores voor een of meer rondes");
   }
 
   if (tieErrors.length > 0) {

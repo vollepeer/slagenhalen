@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   MenuItem,
   Stack,
   Table,
@@ -17,6 +18,7 @@ import {
   Typography
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
+import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiSend } from "../api";
 import { EventDetail, EventParticipant, Player } from "../types";
@@ -413,7 +415,7 @@ export function EventDetailPage() {
                     direction={sortKey === "activeRank" ? sortDirection : "asc"}
                     onClick={() => handleSort("activeRank")}
                   >
-                    Rang (actueel)
+                    Rang
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "playerId" ? sortDirection : false}>
@@ -422,7 +424,7 @@ export function EventDetailPage() {
                     direction={sortKey === "playerId" ? sortDirection : "asc"}
                     onClick={() => handleSort("playerId")}
                   >
-                    Speler-ID
+                    ID
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "playerName" ? sortDirection : false}>
@@ -431,7 +433,7 @@ export function EventDetailPage() {
                     direction={sortKey === "playerName" ? sortDirection : "asc"}
                     onClick={() => handleSort("playerName")}
                   >
-                    Speler
+                    Naam
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "pointsR1" ? sortDirection : false}>
@@ -440,7 +442,7 @@ export function EventDetailPage() {
                     direction={sortKey === "pointsR1" ? sortDirection : "asc"}
                     onClick={() => handleSort("pointsR1")}
                   >
-                    Punten ronde 1
+                    Punten R1
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "rankR1" ? sortDirection : false}>
@@ -449,7 +451,7 @@ export function EventDetailPage() {
                     direction={sortKey === "rankR1" ? sortDirection : "asc"}
                     onClick={() => handleSort("rankR1")}
                   >
-                    Rang na ronde 1
+                    Rang na R1
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "pointsR2" ? sortDirection : false}>
@@ -458,7 +460,7 @@ export function EventDetailPage() {
                     direction={sortKey === "pointsR2" ? sortDirection : "asc"}
                     onClick={() => handleSort("pointsR2")}
                   >
-                    Punten ronde 2
+                    Punten R2
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "rankR2" ? sortDirection : false}>
@@ -467,7 +469,7 @@ export function EventDetailPage() {
                     direction={sortKey === "rankR2" ? sortDirection : "asc"}
                     onClick={() => handleSort("rankR2")}
                   >
-                    Rang na ronde 2
+                    Rang na R2
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "pointsR3" ? sortDirection : false}>
@@ -476,7 +478,7 @@ export function EventDetailPage() {
                     direction={sortKey === "pointsR3" ? sortDirection : "asc"}
                     onClick={() => handleSort("pointsR3")}
                   >
-                    Punten ronde 3
+                    Punten R3
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "rankR3" ? sortDirection : false}>
@@ -485,7 +487,7 @@ export function EventDetailPage() {
                     direction={sortKey === "rankR3" ? sortDirection : "asc"}
                     onClick={() => handleSort("rankR3")}
                   >
-                    Rang na ronde 3
+                    Rang na R3
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "totalPoints" ? sortDirection : false}>
@@ -583,53 +585,77 @@ export function EventDetailPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="h6">Prijswinnaars</Typography>
-              <Stack spacing={1} sx={{ mt: 1 }}>
-                <Typography variant="subtitle2">Prijsrangen per ronde</Typography>
-                <Stack direction="row" spacing={1}>
-                  {prizeRanks.map((value, index) => (
-                    <TextField
-                      key={`prize-rank-${index}`}
-                      label={`Rang ${index + 1}`}
-                      type="number"
-                      size="small"
-                      value={value}
-                      onChange={(event) =>
-                        setPrizeRanks((current) => {
-                          const next = [...current] as [string, string, string];
-                          next[index] = event.target.value;
-                          return next;
-                        })
-                      }
-                      inputProps={{ min: 1 }}
-                      disabled={event.status === "LOCKED"}
-                      sx={{ maxWidth: 110 }}
-                    />
-                  ))}
-                  <Button
-                    variant="outlined"
-                    onClick={savePrizeRanks}
+      <Box
+        sx={{
+          display: "grid",
+          gap: 2,
+          gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" }
+        }}
+      >
+        <Card>
+          <CardContent>
+            <Typography variant="h6">Prijswinnaars</Typography>
+            <Stack spacing={1} sx={{ mt: 1 }}>
+              <Typography variant="subtitle2">Prijsrangen per ronde</Typography>
+              <Stack spacing={1}>
+                {prizeRanks.map((value, index) => (
+                  <TextField
+                    key={`prize-rank-${index}`}
+                        label={`R${index + 1}`}
+                    type="number"
+                    size="small"
+                    value={value}
+                    onChange={(event) =>
+                      setPrizeRanks((current) => {
+                        const next = [...current] as [string, string, string];
+                        next[index] = event.target.value;
+                        return next;
+                      })
+                    }
+                    inputProps={{ min: 1 }}
                     disabled={event.status === "LOCKED"}
-                  >
-                    Opslaan
-                  </Button>
-                </Stack>
+                    sx={{ maxWidth: 160 }}
+                  />
+                ))}
+                <Button
+                  variant="outlined"
+                  onClick={savePrizeRanks}
+                  disabled={event.status === "LOCKED"}
+                >
+                  Opslaan
+                </Button>
               </Stack>
-              <Stack spacing={1} sx={{ mt: 2 }}>
-                {event.roundWinners.every((round) => round.winners.length === 0) ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Nog geen prijswinnaars beschikbaar.
-                  </Typography>
-                ) : (
-                  event.roundWinners.map((round) => (
-                    <Box key={`round-${round.round}`}>
-                      <Typography variant="subtitle2">
-                        Ronde {round.round}
-                      </Typography>
+            </Stack>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ bgcolor: "#f8f2e8" }}>
+          <CardContent>
+            <Typography variant="h6">Kaartavondresultaten</Typography>
+            <Stack spacing={1.5} sx={{ mt: 2 }}>
+              {event.roundWinners.every((round) => round.winners.length === 0) ? (
+                <Typography variant="body2" color="text.secondary">
+                  Nog geen prijswinnaars beschikbaar.
+                </Typography>
+              ) : (
+                event.roundWinners.map((round) => (
+                  <Box
+                    key={`round-${round.round}`}
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      border: "1px solid #eadfcf",
+                      bgcolor: "#fffaf1"
+                    }}
+                  >
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip
+                        label={`R${round.round}`}
+                        size="small"
+                        sx={{ bgcolor: "#efe3d0", fontWeight: 700 }}
+                      />
+                    </Stack>
+                    <Box sx={{ mt: 1 }}>
                       {round.winners.length === 0 ? (
                         <Typography variant="body2" color="text.secondary">
                           Geen prijswinnaars.
@@ -642,10 +668,24 @@ export function EventDetailPage() {
                         ))
                       )}
                     </Box>
-                  ))
-                )}
-                <Box>
-                  <Typography variant="subtitle2">Eindwinnaar</Typography>
+                  </Box>
+                ))
+              )}
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  border: "1px solid #e4d2b4",
+                  bgcolor: "#fff4dc"
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <EmojiEventsIcon sx={{ color: "#c9a227" }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Eindwinnaar
+                  </Typography>
+                </Stack>
+                <Box sx={{ mt: 1 }}>
                   {event.eventWinner ? (
                     <Typography>
                       Rang {event.eventWinner.rank}: {formatWinnerLabel(event.eventWinner.playerName)}
@@ -656,48 +696,51 @@ export function EventDetailPage() {
                     </Typography>
                   )}
                 </Box>
-              </Stack>
-            </Box>
-            <Box sx={{ flex: 1 }}>
-              {event.status === "LOCKED" ? (
-                <>
-                  <Typography variant="h6">Ontgrendelen</Typography>
+              </Box>
+            </Stack>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            {event.status === "LOCKED" ? (
+              <>
+                <Typography variant="h6">Ontgrendelen</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Ontgrendel om de scores en deelnemers te wijzigen.
+                </Typography>
+                <Button
+                  variant="contained"
+                  color="secondary"
+                  sx={{ mt: 1 }}
+                  onClick={unlockEvent}
+                >
+                  Kaartavond ontgrendelen
+                </Button>
+              </>
+            ) : (
+              <>
+                <Typography variant="h6">Vergrendelen</Typography>
+                {event.canLock ? (
+                  <Typography variant="body2">Alle voorwaarden zijn in orde.</Typography>
+                ) : (
                   <Typography variant="body2" color="text.secondary">
-                    Ontgrendel om de scores en deelnemers te wijzigen.
+                    Voorwaarden niet voldaan: {event.lockReasons.join(", ")}
                   </Typography>
-                  <Button
-                    variant="contained"
-                    color="secondary"
-                    sx={{ mt: 1 }}
-                    onClick={unlockEvent}
-                  >
-                    Kaartavond ontgrendelen
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Typography variant="h6">Vergrendelen</Typography>
-                  {event.canLock ? (
-                    <Typography variant="body2">Alle voorwaarden zijn in orde.</Typography>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Voorwaarden niet voldaan: {event.lockReasons.join(", ")}
-                    </Typography>
-                  )}
-                  <Button
-                    variant="contained"
-                    sx={{ mt: 1 }}
-                    onClick={lockEvent}
-                    disabled={!event.canLock}
-                  >
-                    Kaartavond vergrendelen
-                  </Button>
-                </>
-              )}
-            </Box>
-          </Stack>
-        </CardContent>
-      </Card>
+                )}
+                <Button
+                  variant="contained"
+                  sx={{ mt: 1 }}
+                  onClick={lockEvent}
+                  disabled={!event.canLock}
+                >
+                  Kaartavond vergrendelen
+                </Button>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </Box>
 
       {event.tieErrors.length > 0 && (
         <Alert severity="warning">
