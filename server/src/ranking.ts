@@ -112,16 +112,32 @@ export function computeRanking(
 
   const roundWinners = ([1, 2, 3] as const).map((round) => {
     const winners: Array<{ rank: number; playerName: string }> = [];
+    const getScore = (p: RankedParticipant) => {
+      if (round === 1) return p.points_r1;
+      if (round === 2) return p.points_r2;
+      return p.points_r3;
+    };
+
+    const seenNames = new Set<string>();
     for (const rank of prizeRanks) {
       const match = participants.find((p) => {
         if (round === 1) return p.rank_r1 === rank;
         if (round === 2) return p.rank_r2 === rank;
         return p.rank_r3 === rank;
       });
-      if (match) {
-        winners.push({ rank, playerName: match.player_name });
+      const targetScore = match ? getScore(match) : null;
+      if (targetScore === null || targetScore === undefined) {
+        continue;
       }
+
+      participants.forEach((p) => {
+        if (getScore(p) === targetScore && !seenNames.has(p.player_name)) {
+          winners.push({ rank, playerName: p.player_name });
+          seenNames.add(p.player_name);
+        }
+      });
     }
+
     return { round, winners };
   });
 
