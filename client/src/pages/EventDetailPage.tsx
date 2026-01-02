@@ -259,10 +259,39 @@ export function EventDetailPage() {
     return map;
   }, [event]);
 
+  const participantByName = useMemo(() => {
+    if (!event) {
+      return new Map<string, EventParticipant>();
+    }
+    const map = new Map<string, EventParticipant>();
+    event.participants.forEach((participant) => {
+      map.set(participant.playerName, participant);
+    });
+    return map;
+  }, [event]);
+
   const formatWinnerLabel = (name: string) => {
     const playerId = playerIdByName.get(name);
     if (!playerId) return name;
     return `${formatPlayerId(playerId)} · ${name}`;
+  };
+
+  const formatPoints = (points: number | null | undefined) => {
+    if (points === null || points === undefined) return "";
+    return `${points} p`;
+  };
+
+  const getRoundPoints = (name: string, round: 1 | 2 | 3) => {
+    const participant = participantByName.get(name);
+    if (!participant) return null;
+    if (round === 1) return participant.pointsR1;
+    if (round === 2) return participant.pointsR2;
+    return participant.pointsR3;
+  };
+
+  const getTotalPoints = (name: string) => {
+    const participant = participantByName.get(name);
+    return participant?.totalPoints ?? null;
   };
 
   const updateScore = async (
@@ -351,6 +380,10 @@ export function EventDetailPage() {
       </Box>
     );
   }
+
+  const endWinnerSuffix = event.eventWinner
+    ? formatPoints(getTotalPoints(event.eventWinner.playerName))
+    : "";
 
   return (
     <Stack spacing={3}>
@@ -661,11 +694,16 @@ export function EventDetailPage() {
                           Geen prijswinnaars.
                         </Typography>
                       ) : (
-                        round.winners.map((winner) => (
-                          <Typography key={`round-${round.round}-${winner.rank}`}>
-                            Rang {winner.rank}: {formatWinnerLabel(winner.playerName)}
-                          </Typography>
-                        ))
+                        round.winners.map((winner) => {
+                          const points = getRoundPoints(winner.playerName, round.round);
+                          const suffix = formatPoints(points);
+                          return (
+                            <Typography key={`round-${round.round}-${winner.rank}`}>
+                              Rang {winner.rank}: {formatWinnerLabel(winner.playerName)}
+                              {suffix ? ` · ${suffix}` : ""}
+                            </Typography>
+                          );
+                        })
                       )}
                     </Box>
                   </Box>
@@ -689,6 +727,7 @@ export function EventDetailPage() {
                   {event.eventWinner ? (
                     <Typography>
                       Rang {event.eventWinner.rank}: {formatWinnerLabel(event.eventWinner.playerName)}
+                      {endWinnerSuffix ? ` · ${endWinnerSuffix}` : ""}
                     </Typography>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
