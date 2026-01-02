@@ -31,11 +31,8 @@ type SortKey =
   | "playerName"
   | "playerId"
   | "pointsR1"
-  | "rankR1"
   | "pointsR2"
-  | "rankR2"
   | "pointsR3"
-  | "rankR3"
   | "totalPoints";
 
 export function EventDetailPage() {
@@ -127,16 +124,10 @@ export function EventDetailPage() {
           return participant.playerId;
         case "pointsR1":
           return participant.pointsR1;
-        case "rankR1":
-          return participant.rankR1;
         case "pointsR2":
           return participant.pointsR2;
-        case "rankR2":
-          return participant.rankR2;
         case "pointsR3":
           return participant.pointsR3;
-        case "rankR3":
-          return participant.rankR3;
         case "totalPoints":
           return participant.totalPoints;
       }
@@ -478,15 +469,6 @@ export function EventDetailPage() {
                     Punten R1
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sortDirection={sortKey === "rankR1" ? sortDirection : false}>
-                  <TableSortLabel
-                    active={sortKey === "rankR1"}
-                    direction={sortKey === "rankR1" ? sortDirection : "asc"}
-                    onClick={() => handleSort("rankR1")}
-                  >
-                    Rang na R1
-                  </TableSortLabel>
-                </TableCell>
                 <TableCell sortDirection={sortKey === "pointsR2" ? sortDirection : false}>
                   <TableSortLabel
                     active={sortKey === "pointsR2"}
@@ -496,15 +478,6 @@ export function EventDetailPage() {
                     Punten R2
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sortDirection={sortKey === "rankR2" ? sortDirection : false}>
-                  <TableSortLabel
-                    active={sortKey === "rankR2"}
-                    direction={sortKey === "rankR2" ? sortDirection : "asc"}
-                    onClick={() => handleSort("rankR2")}
-                  >
-                    Rang na R2
-                  </TableSortLabel>
-                </TableCell>
                 <TableCell sortDirection={sortKey === "pointsR3" ? sortDirection : false}>
                   <TableSortLabel
                     active={sortKey === "pointsR3"}
@@ -512,15 +485,6 @@ export function EventDetailPage() {
                     onClick={() => handleSort("pointsR3")}
                   >
                     Punten R3
-                  </TableSortLabel>
-                </TableCell>
-                <TableCell sortDirection={sortKey === "rankR3" ? sortDirection : false}>
-                  <TableSortLabel
-                    active={sortKey === "rankR3"}
-                    direction={sortKey === "rankR3" ? sortDirection : "asc"}
-                    onClick={() => handleSort("rankR3")}
-                  >
-                    Rang na R3
                   </TableSortLabel>
                 </TableCell>
                 <TableCell sortDirection={sortKey === "totalPoints" ? sortDirection : false}>
@@ -570,7 +534,6 @@ export function EventDetailPage() {
                       disabled={event.status === "LOCKED"}
                     />
                   </TableCell>
-                  <TableCell>{participant.rankR1 ?? ""}</TableCell>
                   <TableCell>
                       <TextField
                         value={participant.pointsR2 ?? ""}
@@ -584,7 +547,6 @@ export function EventDetailPage() {
                       disabled={event.status === "LOCKED"}
                     />
                   </TableCell>
-                  <TableCell>{participant.rankR2 ?? ""}</TableCell>
                   <TableCell>
                       <TextField
                         value={participant.pointsR3 ?? ""}
@@ -598,7 +560,6 @@ export function EventDetailPage() {
                       disabled={event.status === "LOCKED"}
                     />
                   </TableCell>
-                  <TableCell>{participant.rankR3 ?? ""}</TableCell>
                     <TableCell>{participant.totalPoints ?? ""}</TableCell>
                     <TableCell>
                       <Button

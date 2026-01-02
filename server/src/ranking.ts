@@ -34,13 +34,13 @@ function computeRanks(
 ): { ranks: Map<number, number>; tie: boolean } {
   const required = (p: RankedParticipant) => {
     if (round === 1) return hasAll([p.points_r1]);
-    if (round === 2) return hasAll([p.points_r1, p.points_r2]);
-    return hasAll([p.points_r1, p.points_r2, p.points_r3]);
+    if (round === 2) return hasAll([p.points_r2]);
+    return hasAll([p.points_r3]);
   };
   const score = (p: RankedParticipant) => {
     if (round === 1) return p.points_r1 ?? null;
-    if (round === 2) return (p.points_r1 ?? 0) + (p.points_r2 ?? 0);
-    return (p.points_r1 ?? 0) + (p.points_r2 ?? 0) + (p.points_r3 ?? 0);
+    if (round === 2) return p.points_r2 ?? null;
+    return p.points_r3 ?? null;
   };
 
   const eligible = participants
@@ -89,7 +89,20 @@ export function computeRanking(
   const round2 = computeRanks(participants, 2);
   const round3 = computeRanks(participants, 3);
 
-  if (round3.tie) tieErrors.push("Ties detected in final totals");
+  const totalEligible = participants
+    .filter((p) => hasAll([p.points_r1, p.points_r2, p.points_r3]))
+    .map((p) => ({ id: p.id, total: p.total_points as number }));
+  const seenTotals = new Set<number>();
+  let totalTie = false;
+  for (const entry of totalEligible) {
+    if (seenTotals.has(entry.total)) {
+      totalTie = true;
+      break;
+    }
+    seenTotals.add(entry.total);
+  }
+
+  if (totalTie) tieErrors.push("Ties detected in final totals");
 
   participants.forEach((p) => {
     p.rank_r1 = round1.ranks.get(p.id) ?? null;
@@ -112,7 +125,11 @@ export function computeRanking(
     return { round, winners };
   });
 
-  const eventWinner = participants.find((p) => p.rank_r3 === 1);
+  const totalSorted = [...totalEligible].sort((a, b) => b.total - a.total);
+  const winnerId = totalSorted[0]?.id ?? null;
+  const eventWinner = winnerId
+    ? participants.find((p) => p.id === winnerId) ?? null
+    : null;
 
   return {
     participants,
