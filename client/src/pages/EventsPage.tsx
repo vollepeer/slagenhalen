@@ -5,6 +5,8 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   MenuItem,
   Stack,
   TextField,
@@ -22,6 +24,7 @@ export function EventsPage() {
   const [seasonId, setSeasonId] = useState<number | "">("");
   const [eventDate, setEventDate] = useState("");
   const [title, setTitle] = useState("");
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadSeasons = async () => {
@@ -36,14 +39,14 @@ export function EventsPage() {
     }
   };
 
-  const loadEvents = async (activeSeasonId: number | "") => {
+  const loadEvents = async (activeSeasonId: number | "", showArchived: boolean) => {
     if (activeSeasonId === "") {
       setEvents([]);
       return;
     }
     try {
       const data = await apiGet<EventSummary[]>(
-        `/api/events?seasonId=${activeSeasonId}&includeArchived=false`
+        `/api/events?seasonId=${activeSeasonId}&includeArchived=${showArchived}`
       );
       setEvents(data);
       setError(null);
@@ -57,8 +60,8 @@ export function EventsPage() {
   }, []);
 
   useEffect(() => {
-    void loadEvents(seasonId);
-  }, [seasonId]);
+    void loadEvents(seasonId, includeArchived);
+  }, [seasonId, includeArchived]);
 
   const addEvent = async () => {
     if (seasonId === "" || !eventDate) {
@@ -73,7 +76,7 @@ export function EventsPage() {
       });
       setEventDate("");
       setTitle("");
-      await loadEvents(seasonId);
+      await loadEvents(seasonId, includeArchived);
       navigate(`/events/${response.id}`);
     } catch (err) {
       setError("Kaartavond toevoegen mislukt.");
@@ -122,8 +125,17 @@ export function EventsPage() {
               fullWidth
             />
             <Button variant="contained" onClick={addEvent}>
-              Kaartavond toevoegen
+              Voeg toe
             </Button>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={includeArchived}
+                  onChange={(event) => setIncludeArchived(event.target.checked)}
+                />
+              }
+              label="Toon gearchiveerde kaartavonden"
+            />
           </Stack>
         </CardContent>
       </Card>
@@ -148,10 +160,33 @@ export function EventsPage() {
                 <Typography variant="body2" color="text.secondary">
                   Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
                 </Typography>
+                {event.isArchived && (
+                  <Typography variant="body2" color="text.secondary">
+                    Gearchiveerd
+                  </Typography>
+                )}
               </Box>
-              <Button variant="outlined" onClick={() => navigate(`/events/${event.id}`)}>
-                Openen
-              </Button>
+              <Stack direction="row" spacing={1}>
+                <Button variant="outlined" onClick={() => navigate(`/events/${event.id}`)}>
+                  Openen
+                </Button>
+                <Button
+                  variant="outlined"
+                  color={event.isArchived ? "secondary" : "primary"}
+                  onClick={async () => {
+                    try {
+                      await apiSend(`/api/events/${event.id}`, "PATCH", {
+                        isArchived: !event.isArchived
+                      });
+                      await loadEvents(seasonId, includeArchived);
+                    } catch (err) {
+                      setError("Archiveren mislukt.");
+                    }
+                  }}
+                >
+                  {event.isArchived ? "Herstellen" : "Archiveren"}
+                </Button>
+              </Stack>
             </CardContent>
           </Card>
         ))}

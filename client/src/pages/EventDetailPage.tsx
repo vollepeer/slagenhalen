@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -47,6 +47,9 @@ export function EventDetailPage() {
   const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("playerName");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const inputRefs = useRef<
+    Record<number, Partial<Record<"pointsR1" | "pointsR2" | "pointsR3", HTMLInputElement | null>>>
+  >({});
   const [prizeRanks, setPrizeRanks] = useState<[string, string, string]>([
     "1",
     "18",
@@ -175,6 +178,26 @@ export function EventDetailPage() {
     }
     setSortKey(key);
     setSortDirection("asc");
+  };
+
+  const focusNextInColumn = (
+    field: "pointsR1" | "pointsR2" | "pointsR3",
+    currentId: number,
+    direction: 1 | -1
+  ) => {
+    const ids = rankingDisplay.rows.map((participant) => participant.id);
+    const currentIndex = ids.indexOf(currentId);
+    if (currentIndex === -1) return;
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= ids.length) {
+      return;
+    }
+    const nextId = ids[nextIndex];
+    const nextInput = inputRefs.current[nextId]?.[field];
+    if (nextInput) {
+      nextInput.focus();
+      nextInput.select();
+    }
   };
 
   const loadEvent = async () => {
@@ -525,9 +548,24 @@ export function EventDetailPage() {
                       <TextField
                         value={participant.pointsR1 ?? ""}
                         onFocus={() => setActiveParticipantId(participant.id)}
+                        inputRef={(element) => {
+                          inputRefs.current[participant.id] =
+                            inputRefs.current[participant.id] || {};
+                          inputRefs.current[participant.id].pointsR1 = element;
+                        }}
                         onChange={(event) =>
                           updateScore(participant, "pointsR1", event.target.value)
                         }
+                        onKeyDown={(event) => {
+                          if (event.key === "Tab") {
+                            event.preventDefault();
+                            focusNextInColumn(
+                              "pointsR1",
+                              participant.id,
+                              event.shiftKey ? -1 : 1
+                            );
+                          }
+                        }}
                       type="number"
                       size="small"
                       inputProps={{ min: 0 }}
@@ -538,9 +576,24 @@ export function EventDetailPage() {
                       <TextField
                         value={participant.pointsR2 ?? ""}
                         onFocus={() => setActiveParticipantId(participant.id)}
+                        inputRef={(element) => {
+                          inputRefs.current[participant.id] =
+                            inputRefs.current[participant.id] || {};
+                          inputRefs.current[participant.id].pointsR2 = element;
+                        }}
                         onChange={(event) =>
                           updateScore(participant, "pointsR2", event.target.value)
                         }
+                        onKeyDown={(event) => {
+                          if (event.key === "Tab") {
+                            event.preventDefault();
+                            focusNextInColumn(
+                              "pointsR2",
+                              participant.id,
+                              event.shiftKey ? -1 : 1
+                            );
+                          }
+                        }}
                       type="number"
                       size="small"
                       inputProps={{ min: 0 }}
@@ -551,9 +604,24 @@ export function EventDetailPage() {
                       <TextField
                         value={participant.pointsR3 ?? ""}
                         onFocus={() => setActiveParticipantId(participant.id)}
+                        inputRef={(element) => {
+                          inputRefs.current[participant.id] =
+                            inputRefs.current[participant.id] || {};
+                          inputRefs.current[participant.id].pointsR3 = element;
+                        }}
                         onChange={(event) =>
                           updateScore(participant, "pointsR3", event.target.value)
                         }
+                        onKeyDown={(event) => {
+                          if (event.key === "Tab") {
+                            event.preventDefault();
+                            focusNextInColumn(
+                              "pointsR3",
+                              participant.id,
+                              event.shiftKey ? -1 : 1
+                            );
+                          }
+                        }}
                       type="number"
                       size="small"
                       inputProps={{ min: 0 }}
