@@ -17,7 +17,7 @@ import {
   TextField,
   Typography
 } from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { useTheme } from "@mui/material/styles";
 import EmojiEventsIcon from "@mui/icons-material/EmojiEvents";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiSend } from "../api";
@@ -57,21 +57,12 @@ export function EventDetailPage() {
   ]);
   const theme = useTheme();
 
-  const tieColors = useMemo(
-    () => [
-      alpha(theme.palette.secondary.main, 0.16),
-      alpha(theme.palette.primary.main, 0.12),
-      alpha(theme.palette.secondary.main, 0.1)
-    ],
-    [theme]
-  );
-
   const rankingDisplay = useMemo(() => {
     if (!event) {
       return {
         rows: [] as EventParticipant[],
         activeById: new Map<number, { rank: number | null; score: number | null }>(),
-        tieColorByScore: new Map<number, string>()
+        rankColorByValue: new Map<number, string>()
       };
     }
 
@@ -96,6 +87,14 @@ export function EventDetailPage() {
     const activeById = new Map<number, { rank: number | null; score: number | null }>();
     snapshots.forEach((entry) => {
       activeById.set(entry.participant.id, { rank: entry.rank, score: entry.score });
+    });
+
+    const rankColorByValue = new Map<number, string>();
+    const rankColors = ["#f6d365", "#c0c0c0", "#cd7f32"];
+    event.prizeRanks.forEach((rank, index) => {
+      if (!rankColorByValue.has(rank)) {
+        rankColorByValue.set(rank, rankColors[index] ?? "#f6d365");
+      }
     });
 
     const getSortValue = (entry: (typeof snapshots)[number], key: SortKey) => {
@@ -149,7 +148,7 @@ export function EventDetailPage() {
     return {
       rows: sorted.map((entry) => entry.participant),
       activeById,
-      tieColorByScore: new Map<number, string>()
+      rankColorByValue
     };
   }, [event, sortDirection, sortKey]);
 
@@ -507,15 +506,22 @@ export function EventDetailPage() {
             <TableBody>
               {rankingDisplay.rows.map((participant) => {
                 const active = rankingDisplay.activeById.get(participant.id);
-                const tieColor =
-                  active?.score !== null && active?.score !== undefined
-                    ? rankingDisplay.tieColorByScore.get(active.score)
+                const colorR1 =
+                  participant.rankR1 !== null && participant.rankR1 !== undefined
+                    ? rankingDisplay.rankColorByValue.get(participant.rankR1)
+                    : undefined;
+                const colorR2 =
+                  participant.rankR2 !== null && participant.rankR2 !== undefined
+                    ? rankingDisplay.rankColorByValue.get(participant.rankR2)
+                    : undefined;
+                const colorR3 =
+                  participant.rankR3 !== null && participant.rankR3 !== undefined
+                    ? rankingDisplay.rankColorByValue.get(participant.rankR3)
                     : undefined;
                 return (
                   <TableRow
                     key={participant.id}
                     sx={{
-                      backgroundColor: tieColor,
                       outline:
                         activeParticipantId === participant.id
                           ? `2px solid ${theme.palette.secondary.main}`
@@ -523,10 +529,12 @@ export function EventDetailPage() {
                       outlineOffset: "-2px"
                     }}
                   >
-                    <TableCell sx={{ fontWeight: 700 }}>{active?.rank ?? ""}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>
+                      {active?.rank ?? ""}
+                    </TableCell>
                     <TableCell>{formatPlayerId(participant.playerId)}</TableCell>
                     <TableCell>{participant.playerName}</TableCell>
-                    <TableCell>
+                    <TableCell sx={colorR1 ? { backgroundColor: colorR1 } : undefined}>
                       <TextField
                         value={participant.pointsR1 ?? ""}
                         onFocus={() => setActiveParticipantId(participant.id)}
@@ -554,7 +562,7 @@ export function EventDetailPage() {
                       disabled={event.status === "LOCKED"}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={colorR2 ? { backgroundColor: colorR2 } : undefined}>
                       <TextField
                         value={participant.pointsR2 ?? ""}
                         onFocus={() => setActiveParticipantId(participant.id)}
@@ -582,7 +590,7 @@ export function EventDetailPage() {
                       disabled={event.status === "LOCKED"}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={colorR3 ? { backgroundColor: colorR3 } : undefined}>
                       <TextField
                         value={participant.pointsR3 ?? ""}
                         onFocus={() => setActiveParticipantId(participant.id)}
