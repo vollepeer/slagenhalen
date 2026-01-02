@@ -17,6 +17,7 @@ import {
 import { alpha, useTheme } from "@mui/material/styles";
 import { apiGet } from "../api";
 import { Season, SeasonRanking } from "../types";
+import { formatPlayerId } from "../utils/playerId";
 
 export function RankingPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -142,6 +143,7 @@ export function RankingPage() {
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ fontWeight: 700 }}>Rang</TableCell>
+                  <TableCell>Speler-ID</TableCell>
                   <TableCell>Speler</TableCell>
                   <TableCell>Totaal punten</TableCell>
                   <TableCell>Kaartavonden</TableCell>
@@ -156,6 +158,7 @@ export function RankingPage() {
                     }}
                   >
                     <TableCell sx={{ fontWeight: 700 }}>{entry.rank}</TableCell>
+                    <TableCell>{formatPlayerId(entry.playerId)}</TableCell>
                     <TableCell>{entry.playerName}</TableCell>
                     <TableCell>{entry.seasonTotal}</TableCell>
                     <TableCell>{entry.appearances}</TableCell>

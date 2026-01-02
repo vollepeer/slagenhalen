@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 import { apiGet, apiSend } from "../api";
 import { Player } from "../types";
+import { formatPlayerId } from "../utils/playerId";
 
 export function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -126,6 +127,9 @@ export function PlayersPage() {
             >
               <Box>
                 <Typography variant="h6">{player.name}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Speler-ID: {formatPlayerId(player.id)}
+                </Typography>
                 {player.isArchived && (
                   <Typography variant="body2" color="text.secondary">
                     Gearchiveerd

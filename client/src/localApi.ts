@@ -445,6 +445,10 @@ export async function handleSend(path: string, method: string, body?: unknown) {
       if (!season) {
         throw new Error("Seizoen niet gevonden.");
       }
+      const activePlayers = store.players.filter((player) => !player.isArchived);
+      if (activePlayers.length > 60) {
+        throw new Error("Maximaal 60 deelnemers toegestaan.");
+      }
       const now = nowIso();
       const newEvent: EventEntity = {
         id: nextId(store, "events"),
@@ -462,6 +466,21 @@ export async function handleSend(path: string, method: string, body?: unknown) {
         updatedAt: now
       };
       store.events.push(newEvent);
+      const sortedPlayers = [...activePlayers].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+      sortedPlayers.forEach((player) => {
+        store.eventParticipants.push({
+          id: nextId(store, "eventParticipants"),
+          eventId: newEvent.id,
+          playerId: player.id,
+          pointsR1: null,
+          pointsR2: null,
+          pointsR3: null,
+          createdAt: now,
+          updatedAt: now
+        });
+      });
       return newEvent;
     });
 
@@ -651,6 +670,30 @@ export async function handleSend(path: string, method: string, body?: unknown) {
         participant.pointsR3 = payload.pointsR3 === null ? null : payload.pointsR3;
       }
       participant.updatedAt = nowIso();
+    });
+
+    return { ok: true };
+  }
+
+  if (updateParticipantMatch && method === "DELETE") {
+    const eventId = Number(updateParticipantMatch[1]);
+    const participantId = Number(updateParticipantMatch[2]);
+    const event = getEventById(eventId);
+    if (!event) {
+      throw new Error("Kaartavond niet gevonden.");
+    }
+    if (event.status === "LOCKED") {
+      throw new Error("Kaartavond is vergrendeld.");
+    }
+
+    writeStore((store) => {
+      const index = store.eventParticipants.findIndex(
+        (entry) => entry.id === participantId && entry.eventId === eventId
+      );
+      if (index === -1) {
+        throw new Error("Deelnemer niet gevonden.");
+      }
+      store.eventParticipants.splice(index, 1);
     });
 
     return { ok: true };

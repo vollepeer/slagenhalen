@@ -12,6 +12,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   Typography
 } from "@mui/material";
@@ -20,6 +21,20 @@ import { useNavigate, useParams } from "react-router-dom";
 import { apiGet, apiSend } from "../api";
 import { EventDetail, EventParticipant, Player } from "../types";
 import { formatEventDate } from "../utils/date";
+import { formatPlayerId } from "../utils/playerId";
+
+type SortDirection = "asc" | "desc";
+type SortKey =
+  | "activeRank"
+  | "playerName"
+  | "playerId"
+  | "pointsR1"
+  | "rankR1"
+  | "pointsR2"
+  | "rankR2"
+  | "pointsR3"
+  | "rankR3"
+  | "totalPoints";
 
 export function EventDetailPage() {
   const { id } = useParams();
@@ -31,6 +46,8 @@ export function EventDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("playerName");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [prizeRanks, setPrizeRanks] = useState<[string, string, string]>([
     "1",
     "18",
@@ -74,17 +91,8 @@ export function EventDetailPage() {
       return { participant, rank: null, score: null };
     });
 
-    const sorted = [...snapshots].sort((a, b) => {
-      if (a.rank !== null && b.rank !== null) {
-        return a.rank - b.rank;
-      }
-      if (a.rank !== null) return -1;
-      if (b.rank !== null) return 1;
-      return a.participant.playerName.localeCompare(b.participant.playerName);
-    });
-
     const scoreCounts = new Map<number, number>();
-    sorted.forEach((entry) => {
+    snapshots.forEach((entry) => {
       if (entry.score !== null) {
         scoreCounts.set(entry.score, (scoreCounts.get(entry.score) ?? 0) + 1);
       }
@@ -92,7 +100,7 @@ export function EventDetailPage() {
 
     const tieColorByScore = new Map<number, string>();
     let tieIndex = 0;
-    sorted.forEach((entry) => {
+    snapshots.forEach((entry) => {
       if (entry.score !== null && (scoreCounts.get(entry.score) ?? 0) > 1) {
         if (!tieColorByScore.has(entry.score)) {
           tieColorByScore.set(entry.score, tieColors[tieIndex % tieColors.length]);
@@ -102,8 +110,62 @@ export function EventDetailPage() {
     });
 
     const activeById = new Map<number, { rank: number | null; score: number | null }>();
-    sorted.forEach((entry) => {
+    snapshots.forEach((entry) => {
       activeById.set(entry.participant.id, { rank: entry.rank, score: entry.score });
+    });
+
+    const getSortValue = (entry: (typeof snapshots)[number], key: SortKey) => {
+      const participant = entry.participant;
+      switch (key) {
+        case "activeRank":
+          return entry.rank;
+        case "playerName":
+          return participant.playerName;
+        case "playerId":
+          return participant.playerId;
+        case "pointsR1":
+          return participant.pointsR1;
+        case "rankR1":
+          return participant.rankR1;
+        case "pointsR2":
+          return participant.pointsR2;
+        case "rankR2":
+          return participant.rankR2;
+        case "pointsR3":
+          return participant.pointsR3;
+        case "rankR3":
+          return participant.rankR3;
+        case "totalPoints":
+          return participant.totalPoints;
+      }
+    };
+
+    const sorted = [...snapshots].sort((a, b) => {
+      const aVal = getSortValue(a, sortKey);
+      const bVal = getSortValue(b, sortKey);
+
+      if (aVal === null || aVal === undefined) {
+        if (bVal === null || bVal === undefined) {
+          return a.participant.playerName.localeCompare(b.participant.playerName);
+        }
+        return 1;
+      }
+      if (bVal === null || bVal === undefined) {
+        return -1;
+      }
+
+      let comparison = 0;
+      if (typeof aVal === "string" && typeof bVal === "string") {
+        comparison = aVal.localeCompare(bVal);
+      } else {
+        comparison = Number(aVal) - Number(bVal);
+      }
+
+      if (comparison === 0) {
+        comparison = a.participant.playerName.localeCompare(b.participant.playerName);
+      }
+
+      return sortDirection === "asc" ? comparison : comparison * -1;
     });
 
     return {
@@ -111,7 +173,16 @@ export function EventDetailPage() {
       activeById,
       tieColorByScore
     };
-  }, [event, tieColors]);
+  }, [event, sortDirection, sortKey, tieColors]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection("asc");
+  };
 
   const loadEvent = async () => {
     try {
@@ -175,6 +246,23 @@ export function EventDetailPage() {
     }
   };
 
+  const playerIdByName = useMemo(() => {
+    if (!event) {
+      return new Map<string, number>();
+    }
+    const map = new Map<string, number>();
+    event.participants.forEach((participant) => {
+      map.set(participant.playerName, participant.playerId);
+    });
+    return map;
+  }, [event]);
+
+  const formatWinnerLabel = (name: string) => {
+    const playerId = playerIdByName.get(name);
+    if (!playerId) return name;
+    return `${formatPlayerId(playerId)} · ${name}`;
+  };
+
   const updateScore = async (
     participant: EventParticipant,
     field: "pointsR1" | "pointsR2" | "pointsR3",
@@ -192,6 +280,20 @@ export function EventDetailPage() {
       await loadEvent();
     } catch (err) {
       setError("Punten opslaan mislukt.");
+    }
+  };
+
+  const removeParticipant = async (participant: EventParticipant) => {
+    try {
+      await apiSend(
+        `/api/events/${eventId}/participants/${participant.id}`,
+        "DELETE"
+      );
+      setSuccess("Deelnemer verwijderd.");
+      await loadEvent();
+      await loadPlayers();
+    } catch (err) {
+      setError("Deelnemer verwijderen mislukt.");
     }
   };
 
@@ -282,7 +384,7 @@ export function EventDetailPage() {
             >
               {availablePlayers.map((player) => (
                 <MenuItem key={player.id} value={player.id}>
-                  {player.name}
+                  {formatPlayerId(player.id)} · {player.name}
                 </MenuItem>
               ))}
             </TextField>
@@ -305,15 +407,97 @@ export function EventDetailPage() {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Rang (actueel)</TableCell>
-                <TableCell>Speler</TableCell>
-                <TableCell>Punten ronde 1</TableCell>
-                <TableCell>Rang na ronde 1</TableCell>
-                <TableCell>Punten ronde 2</TableCell>
-                <TableCell>Rang na ronde 2</TableCell>
-                <TableCell>Punten ronde 3</TableCell>
-                <TableCell>Rang na ronde 3</TableCell>
-                <TableCell>Totaal punten</TableCell>
+                <TableCell sortDirection={sortKey === "activeRank" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "activeRank"}
+                    direction={sortKey === "activeRank" ? sortDirection : "asc"}
+                    onClick={() => handleSort("activeRank")}
+                  >
+                    Rang (actueel)
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "playerId" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "playerId"}
+                    direction={sortKey === "playerId" ? sortDirection : "asc"}
+                    onClick={() => handleSort("playerId")}
+                  >
+                    Speler-ID
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "playerName" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "playerName"}
+                    direction={sortKey === "playerName" ? sortDirection : "asc"}
+                    onClick={() => handleSort("playerName")}
+                  >
+                    Speler
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "pointsR1" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "pointsR1"}
+                    direction={sortKey === "pointsR1" ? sortDirection : "asc"}
+                    onClick={() => handleSort("pointsR1")}
+                  >
+                    Punten ronde 1
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "rankR1" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "rankR1"}
+                    direction={sortKey === "rankR1" ? sortDirection : "asc"}
+                    onClick={() => handleSort("rankR1")}
+                  >
+                    Rang na ronde 1
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "pointsR2" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "pointsR2"}
+                    direction={sortKey === "pointsR2" ? sortDirection : "asc"}
+                    onClick={() => handleSort("pointsR2")}
+                  >
+                    Punten ronde 2
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "rankR2" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "rankR2"}
+                    direction={sortKey === "rankR2" ? sortDirection : "asc"}
+                    onClick={() => handleSort("rankR2")}
+                  >
+                    Rang na ronde 2
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "pointsR3" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "pointsR3"}
+                    direction={sortKey === "pointsR3" ? sortDirection : "asc"}
+                    onClick={() => handleSort("pointsR3")}
+                  >
+                    Punten ronde 3
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "rankR3" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "rankR3"}
+                    direction={sortKey === "rankR3" ? sortDirection : "asc"}
+                    onClick={() => handleSort("rankR3")}
+                  >
+                    Rang na ronde 3
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={sortKey === "totalPoints" ? sortDirection : false}>
+                  <TableSortLabel
+                    active={sortKey === "totalPoints"}
+                    direction={sortKey === "totalPoints" ? sortDirection : "asc"}
+                    onClick={() => handleSort("totalPoints")}
+                  >
+                    Totaal punten
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>Acties</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -336,6 +520,7 @@ export function EventDetailPage() {
                     }}
                   >
                     <TableCell sx={{ fontWeight: 700 }}>{active?.rank ?? ""}</TableCell>
+                    <TableCell>{formatPlayerId(participant.playerId)}</TableCell>
                     <TableCell>{participant.playerName}</TableCell>
                     <TableCell>
                       <TextField
@@ -380,6 +565,16 @@ export function EventDetailPage() {
                   </TableCell>
                   <TableCell>{participant.rankR3 ?? ""}</TableCell>
                     <TableCell>{participant.totalPoints ?? ""}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="text"
+                        color="error"
+                        onClick={() => removeParticipant(participant)}
+                        disabled={event.status === "LOCKED"}
+                      >
+                        Verwijderen
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -442,7 +637,7 @@ export function EventDetailPage() {
                       ) : (
                         round.winners.map((winner) => (
                           <Typography key={`round-${round.round}-${winner.rank}`}>
-                            Rang {winner.rank}: {winner.playerName}
+                            Rang {winner.rank}: {formatWinnerLabel(winner.playerName)}
                           </Typography>
                         ))
                       )}
@@ -453,7 +648,7 @@ export function EventDetailPage() {
                   <Typography variant="subtitle2">Eindwinnaar</Typography>
                   {event.eventWinner ? (
                     <Typography>
-                      Rang {event.eventWinner.rank}: {event.eventWinner.playerName}
+                      Rang {event.eventWinner.rank}: {formatWinnerLabel(event.eventWinner.playerName)}
                     </Typography>
                   ) : (
                     <Typography variant="body2" color="text.secondary">

@@ -5,10 +5,12 @@ import {
   Button,
   Card,
   CardContent,
+  Divider,
   Stack,
+  TextField,
   Typography
 } from "@mui/material";
-import { exportStore, importStore, resetStore } from "../localStore";
+import { exportStore, importStore, nextId, readStore, resetStore, writeStore } from "../localStore";
 
 function downloadFile(contents: string, filename: string, type: string) {
   const blob = new Blob([contents], { type });
@@ -36,6 +38,7 @@ export function DataPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [playerImportText, setPlayerImportText] = useState("");
 
   const handleExport = () => {
     try {
@@ -74,6 +77,60 @@ export function DataPage() {
       setError("Wissen mislukt.");
       setSuccess(null);
     }
+  };
+
+  const handleImportPlayers = () => {
+    const lines = playerImportText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    if (lines.length === 0) {
+      setError("Plak minimaal één spelersnaam.");
+      setSuccess(null);
+      return;
+    }
+
+    const normalized = new Set<string>();
+    const uniqueNames: string[] = [];
+    lines.forEach((name) => {
+      const key = name.toLowerCase();
+      if (!normalized.has(key)) {
+        normalized.add(key);
+        uniqueNames.push(name);
+      }
+    });
+
+    const before = readStore().players.length;
+    writeStore((store) => {
+      const existing = new Set(store.players.map((player) => player.name.toLowerCase()));
+      const now = new Date().toISOString();
+      uniqueNames.forEach((name) => {
+        const key = name.toLowerCase();
+        if (existing.has(key)) {
+          return;
+        }
+        store.players.push({
+          id: nextId(store, "players"),
+          name,
+          isArchived: false,
+          createdAt: now,
+          updatedAt: now
+        });
+        existing.add(key);
+      });
+    });
+    const added = readStore().players.length - before;
+
+    if (added === 0) {
+      setError("Geen nieuwe spelers toegevoegd.");
+      setSuccess(null);
+      return;
+    }
+
+    setSuccess(`${added} spelers toegevoegd.`);
+    setError(null);
+    setPlayerImportText("");
   };
 
   return (
@@ -124,6 +181,29 @@ export function DataPage() {
               }
             }}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="h6">Spelers importeren</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Plak spelersnamen, één naam per regel.
+            </Typography>
+            <TextField
+              multiline
+              minRows={6}
+              placeholder="Jan Jansen&#10;Piet de Vries&#10;..."
+              value={playerImportText}
+              onChange={(event) => setPlayerImportText(event.target.value)}
+              fullWidth
+            />
+            <Divider />
+            <Button variant="contained" onClick={handleImportPlayers}>
+              Importeer spelers
+            </Button>
+          </Stack>
         </CardContent>
       </Card>
     </Stack>
