@@ -21,6 +21,8 @@ export function PlayersPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   const loadPlayers = async () => {
     try {
@@ -60,6 +62,31 @@ export function PlayersPage() {
       await loadPlayers();
     } catch (err) {
       setError("Archiveren mislukt.");
+    }
+  };
+
+  const startEdit = (player: Player) => {
+    setEditingPlayerId(player.id);
+    setEditingName(player.name);
+    setError(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingPlayerId(null);
+    setEditingName("");
+  };
+
+  const saveEdit = async (player: Player) => {
+    if (!editingName.trim()) {
+      setError("Vul een naam in.");
+      return;
+    }
+    try {
+      await apiSend(`/api/players/${player.id}`, "PATCH", { name: editingName });
+      await loadPlayers();
+      cancelEdit();
+    } catch (err) {
+      setError("Bewerken mislukt. Controleer of de naam uniek is.");
     }
   };
 
@@ -120,13 +147,23 @@ export function PlayersPage() {
             <CardContent
               sx={{
                 display: "flex",
-                alignItems: "center",
                 justifyContent: "space-between",
-                gap: 2
+                gap: 2,
+                flexDirection: { xs: "column", md: "row" },
+                alignItems: { xs: "stretch", md: "center" }
               }}
             >
               <Box>
-                <Typography variant="h6">{player.name}</Typography>
+                {editingPlayerId === player.id ? (
+                  <TextField
+                    label="Spelernaam"
+                    value={editingName}
+                    onChange={(event) => setEditingName(event.target.value)}
+                    fullWidth
+                  />
+                ) : (
+                  <Typography variant="h6">{player.name}</Typography>
+                )}
                 <Typography variant="body2" color="text.secondary">
                   Speler-ID: {formatPlayerId(player.id)}
                 </Typography>
@@ -136,13 +173,35 @@ export function PlayersPage() {
                   </Typography>
                 )}
               </Box>
-              <Button
-                variant="outlined"
-                color={player.isArchived ? "secondary" : "primary"}
-                onClick={() => toggleArchive(player)}
-              >
-                {player.isArchived ? "Herstellen" : "Archiveren"}
-              </Button>
+              <Stack direction="row" spacing={1}>
+                {editingPlayerId === player.id ? (
+                  <>
+                    <Button
+                      variant="contained"
+                      onClick={() => saveEdit(player)}
+                      disabled={editingName.trim() === ""}
+                    >
+                      Opslaan
+                    </Button>
+                    <Button variant="outlined" onClick={cancelEdit}>
+                      Annuleren
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outlined" onClick={() => startEdit(player)}>
+                      Bewerken
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color={player.isArchived ? "secondary" : "primary"}
+                      onClick={() => toggleArchive(player)}
+                    >
+                      {player.isArchived ? "Herstellen" : "Archiveren"}
+                    </Button>
+                  </>
+                )}
+              </Stack>
             </CardContent>
           </Card>
         ))}

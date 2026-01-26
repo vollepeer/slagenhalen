@@ -140,6 +140,7 @@ When the season is finished:
 ### 6.1 Player management
 - Create player (unique name required).
 - List and search players.
+- Rename player (unique name required).
 - Archive/unarchive player.
 - Validation messages in Dutch.
 
@@ -347,6 +348,7 @@ Only if season is finished:
 
 ### Players
 - Creating a player with an existing name is rejected with a Dutch error message.
+- Renaming a player to an existing name is rejected with a Dutch error message.
 - Archived players don’t appear in default “Deelnemer toevoegen” search.
 
 ### Events
