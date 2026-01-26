@@ -56,7 +56,7 @@ For each participant:
 - If any of the three round scores is unknown (`NULL`), `totalPoints` is **unknown** (display blank).
 - Otherwise: `totalPoints = pointsR1 + pointsR2 + pointsR3`.
 
-### 4.4 Rankings (no ties allowed)
+### 4.4 Rankings (gelijke standen)
 Ranking is computed on **cumulative points** through that round:
 
 - Round 1 cumulative: `c1 = pointsR1`
@@ -69,10 +69,10 @@ Rank calculation rules:
   - `rankR1` requires `pointsR1` not null
   - `rankR2` requires `pointsR1` and `pointsR2` not null
   - `rankR3` requires all three not null
-- **No ties are allowed** in any computed ranking:
-  - If equal cumulative scores occur for a ranking that should be shown, this is a validation error.
-  - The admin is responsible for adjusting input to avoid ties.
-  - The tool must **detect ties** and block locking if ties exist.
+- De tool **detecteert gelijke standen** in de eindstand (round 3 total).
+- Bij gelijke totaalscores in de eindstand:
+  - Toon een duidelijke waarschuwing in de UI.
+  - Vergrendelen blijft toegestaan.
 
 ### 4.5 Winners (event prizes)
 After the event is complete (final ranking = round 3):
@@ -90,8 +90,7 @@ Locking rules:
 - Lock is blocked unless all conditions pass:
   1. Participant count is between **1 and 60**.
   2. Every participant has known scores for rounds 1–3 (no NULLs).
-  3. No ties exist in the final totals (round 3 cumulative).
-  4. (Recommended) Also validate no ties in round 1 and round 2 cumulatives.
+- If there are ties in the final totals (round 3 cumulative), show a warning but allow locking.
 - When locked:
   - Event becomes read-only.
   - Store `lockedAt` timestamp.
@@ -272,7 +271,7 @@ Behavior:
 - Max 60 participants per event.
 - No edits allowed when event is LOCKED.
 - Score inputs: integer >= 0; allow NULL for unknown in OPEN events.
-- Lock checks (completeness + no ties).
+- Lock checks (completeness; ties in eindstand geven alleen een waarschuwing).
 
 ---
 
@@ -309,10 +308,13 @@ Suggested server responses include computed fields:
 For each round N:
 1. Filter participants who have all required scores known for round N.
 2. Compute cumulative value `cN`.
-3. Detect ties: if any duplicate `cN` exists among included participants, mark as tie error.
-4. Sort descending by `cN`.
-5. Assign ranks starting at 1 in sorted order.
-6. Participants missing required scores have blank rank.
+3. Sort descending by `cN`.
+4. Assign ranks starting at 1 in sorted order.
+5. Participants missing required scores have blank rank.
+
+Tie warning (final totals):
+1. Compute round 3 totals (`c3`).
+2. If any duplicate totals exist, mark a tie warning for the event.
 
 ### Winners computation (per event)
 - Winners are taken from final ranking list (round 3 ranks).
@@ -355,11 +357,10 @@ Only if season is finished:
 
 ### Rankings and ties
 - Rankings update immediately and match descending cumulative totals.
-- If a tie is entered, UI shows Dutch error and event cannot be locked.
+- If a tie is entered in the final totals, UI shows a Dutch warning and the event can still be locked.
 
 ### Locking
 - Locking fails if any score is unknown.
-- Locking fails if any ties exist in final totals.
 - Locked events cannot be edited.
 
 ### Season ranking

@@ -796,15 +796,14 @@ export function EventDetailPage() {
                 </Button>
               </>
             )}
+            {event.tieErrors.length > 0 && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                Let op: gelijke totaalscores in de eindstand. Vergrendelen is toegestaan.
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </Box>
-
-      {event.tieErrors.length > 0 && (
-        <Alert severity="warning">
-          Gelijke totaalscores zijn niet toegestaan. Pas de punten aan.
-        </Alert>
-      )}
     </Stack>
   );
 }

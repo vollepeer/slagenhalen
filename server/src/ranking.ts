@@ -171,9 +171,5 @@ export function canLockEvent(participants: RankedParticipant[], tieErrors: strin
     reasons.push("Ontbrekende scores voor een of meer rondes");
   }
 
-  if (tieErrors.length > 0) {
-    reasons.push("Gelijke totaalscores in de eindstand");
-  }
-
   return { allowed: reasons.length === 0, reasons };
 }
