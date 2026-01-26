@@ -28,6 +28,7 @@
     {
       "id": 1,
       "name": "2025",
+      "topScoresCount": 7,
       "startDate": null,
       "endDate": null,
       "isArchived": false,

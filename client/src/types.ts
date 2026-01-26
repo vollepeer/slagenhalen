@@ -7,6 +7,7 @@ export type Player = {
 export type Season = {
   id: number;
   name: string;
+  topScoresCount: number;
   startDate: string | null;
   endDate: string | null;
   isArchived: boolean;

@@ -143,6 +143,7 @@ export async function handleGet(path: string) {
     return seasons.map((season) => ({
       id: season.id,
       name: season.name,
+      topScoresCount: season.topScoresCount,
       startDate: season.startDate,
       endDate: season.endDate,
       isArchived: season.isArchived
@@ -186,6 +187,8 @@ export async function handleGet(path: string) {
     const seasonId = Number(seasonRankingMatch[1]);
     const store = readStore();
 
+    const season = store.seasons.find((entry) => entry.id === seasonId);
+    const topScoresCount = season?.topScoresCount ?? 7;
     const events = store.events.filter((event) => event.seasonId === seasonId);
     const relevant = events.filter((event) => !event.isArchived);
     const openEvents = relevant.filter((event) => event.status !== "LOCKED");
@@ -231,21 +234,31 @@ export async function handleGet(path: string) {
 
     const totals = new Map<
       number,
-      { playerId: number; playerName: string; total: number; appearances: number }
+      { playerId: number; playerName: string; scores: number[] }
     >();
     for (const row of rows) {
       const entry = totals.get(row.player_id) || {
         playerId: row.player_id,
         playerName: row.player_name,
-        total: 0,
-        appearances: 0
+        scores: []
       };
-      entry.total += row.total_points;
-      entry.appearances += 1;
+      entry.scores.push(row.total_points);
       totals.set(row.player_id, entry);
     }
 
-    const ranking = Array.from(totals.values()).sort((a, b) => b.total - a.total);
+    const ranking = Array.from(totals.values())
+      .map((entry) => {
+        const sortedScores = [...entry.scores].sort((a, b) => b - a);
+        const usedScores = sortedScores.slice(0, topScoresCount);
+        const total = usedScores.reduce((sum, score) => sum + score, 0);
+        return {
+          playerId: entry.playerId,
+          playerName: entry.playerName,
+          total,
+          appearances: usedScores.length
+        };
+      })
+      .sort((a, b) => b.total - a.total);
     const seenTotals = new Set<number>();
     const tieWarning = ranking.some((entry) => {
       if (seenTotals.has(entry.total)) return true;
@@ -346,16 +359,29 @@ export async function handleSend(path: string, method: string, body?: unknown) {
   }
 
   if (pathname === "/api/seasons" && method === "POST") {
-    const payload = body as { name?: unknown; startDate?: unknown; endDate?: unknown };
+    const payload = body as {
+      name?: unknown;
+      topScoresCount?: unknown;
+      startDate?: unknown;
+      endDate?: unknown;
+    };
     if (!isNonEmptyString(payload?.name)) {
       throw new Error("Seizoensnaam is verplicht.");
     }
     const name = payload.name.trim();
+    const topScoresCount =
+      typeof payload.topScoresCount === "number" && Number.isInteger(payload.topScoresCount)
+        ? payload.topScoresCount
+        : 7;
+    if (topScoresCount < 1) {
+      throw new Error("Aantal beste scores moet minimaal 1 zijn.");
+    }
     const season = writeStore((store) => {
       const now = nowIso();
       const newSeason: SeasonEntity = {
         id: nextId(store, "seasons"),
         name,
+        topScoresCount,
         startDate:
           typeof payload.startDate === "string" ? payload.startDate : null,
         endDate: typeof payload.endDate === "string" ? payload.endDate : null,
@@ -375,12 +401,14 @@ export async function handleSend(path: string, method: string, body?: unknown) {
     const seasonId = Number(seasonMatch[1]);
     const payload = body as {
       name?: unknown;
+      topScoresCount?: unknown;
       startDate?: unknown;
       endDate?: unknown;
       isArchived?: unknown;
     };
     if (
       payload?.name === undefined &&
+      payload?.topScoresCount === undefined &&
       payload?.startDate === undefined &&
       payload?.endDate === undefined &&
       payload?.isArchived === undefined
@@ -398,6 +426,16 @@ export async function handleSend(path: string, method: string, body?: unknown) {
           throw new Error("Ongeldige seizoensgegevens.");
         }
         season.name = payload.name.trim();
+      }
+      if (payload?.topScoresCount !== undefined) {
+        if (
+          typeof payload.topScoresCount !== "number" ||
+          !Number.isInteger(payload.topScoresCount) ||
+          payload.topScoresCount < 1
+        ) {
+          throw new Error("Ongeldige seizoensgegevens.");
+        }
+        season.topScoresCount = payload.topScoresCount;
       }
       if (payload?.startDate !== undefined) {
         season.startDate =

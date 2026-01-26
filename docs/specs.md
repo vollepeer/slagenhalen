@@ -128,8 +128,9 @@ If the season is not finished:
 ### 5.2 Calculation
 When the season is finished:
 - For each player, compute:
-  - `seasonTotal = sum(eventTotalPoints)` across all **non-archived, LOCKED** events in the season where the player participated.
-  - `appearances = count(events included in the sum)`.
+  - Take only the **X highest** `eventTotalPoints` across all **non-archived, LOCKED** events in the season where the player participated.
+  - `seasonTotal = sum(top X eventTotalPoints)`.
+  - `appearances = count(events included in the sum)` (max X).
 - Sort descending by `seasonTotal`.
 - Detect ties and show a warning if they occur (ties should not happen per admin rule, but detect anyway).
 
@@ -146,6 +147,7 @@ When the season is finished:
 
 ### 6.2 Season management
 - Create season (name required).
+- Configure per season how many **beste scores** meetellen voor het klassement (`topScoresCount`, default **7**).
 - List seasons.
 - Archive/unarchive season.
 
@@ -233,6 +235,7 @@ Behavior:
 **seasons**
 - `id` number
 - `name` string
+- `topScoresCount` number (default **7**)
 - `startDate` string | null (YYYY-MM-DD)
 - `endDate` string | null (YYYY-MM-DD)
 - `isArchived` boolean
@@ -272,6 +275,7 @@ Behavior:
 - Max 60 participants per event.
 - No edits allowed when event is LOCKED.
 - Score inputs: integer >= 0; allow NULL for unknown in OPEN events.
+- `seasons.topScoresCount` must be an integer >= 1.
 - Lock checks (completeness; ties in eindstand geven alleen een waarschuwing).
 
 ---
@@ -328,7 +332,7 @@ Season is finished if:
 
 ### Season ranking computation
 Only if season is finished:
-- Aggregate event totals per player across included events.
+- Aggregate event totals per player across included events and keep only the **top X** totals per player (X = season `topScoresCount`).
 - Sort descending.
 
 ---
@@ -367,7 +371,8 @@ Only if season is finished:
 
 ### Season ranking
 - If any non-archived event in the season is not locked, ranking is not shown and Dutch message is shown.
-- When all non-archived events are locked, season ranking shows correct sums and ordering.
+- When all non-archived events are locked, season ranking uses only the top X scores per player and shows correct ordering.
+ - Nieuwe seizoenen hebben standaard `topScoresCount = 7` en het aanpassen ervan beïnvloedt het klassement.
 
 ### Offline
 - App works with no internet connection.

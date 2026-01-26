@@ -9,6 +9,7 @@ export type PlayerEntity = {
 export type SeasonEntity = {
   id: number;
   name: string;
+  topScoresCount: number;
   startDate: string | null;
   endDate: string | null;
   isArchived: boolean;
@@ -112,6 +113,14 @@ function normalizeStore(raw: Partial<Store>): Store {
     eventParticipants: raw.eventParticipants ?? [],
     auditLog: raw.auditLog ?? []
   };
+
+  store.seasons = store.seasons.map((season) => ({
+    ...season,
+    topScoresCount:
+      typeof season.topScoresCount === "number" && season.topScoresCount >= 1
+        ? season.topScoresCount
+        : 7
+  }));
 
   store.meta.lastIds.players = Math.max(store.meta.lastIds.players, maxId(store.players));
   store.meta.lastIds.seasons = Math.max(store.meta.lastIds.seasons, maxId(store.seasons));

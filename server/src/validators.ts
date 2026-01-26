@@ -11,12 +11,14 @@ export const updatePlayerSchema = z.object({
 
 export const createSeasonSchema = z.object({
   name: z.string().min(1),
+  topScoresCount: z.number().int().min(1).optional(),
   startDate: z.string().nullable().optional(),
   endDate: z.string().nullable().optional()
 });
 
 export const updateSeasonSchema = z.object({
   name: z.string().min(1).optional(),
+  topScoresCount: z.number().int().min(1).optional(),
   startDate: z.string().nullable().optional(),
   endDate: z.string().nullable().optional(),
   isArchived: z.boolean().optional()

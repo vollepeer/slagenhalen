@@ -20,6 +20,9 @@ export function SeasonsPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [scoreCountBySeason, setScoreCountBySeason] = useState<Record<number, string>>(
+    {}
+  );
 
   const loadSeasons = async () => {
     try {
@@ -27,6 +30,13 @@ export function SeasonsPage() {
         `/api/seasons?includeArchived=${includeArchived}`
       );
       setSeasons(data);
+      setScoreCountBySeason((current) => {
+        const next = { ...current };
+        data.forEach((season) => {
+          next[season.id] = String(season.topScoresCount);
+        });
+        return next;
+      });
       setError(null);
     } catch (err) {
       setError("Kon seizoenen niet laden.");
@@ -59,6 +69,35 @@ export function SeasonsPage() {
       await loadSeasons();
     } catch (err) {
       setError("Archiveren mislukt.");
+    }
+  };
+
+  const updateScoreCount = async (season: Season, rawValue: string) => {
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      setError("Vul een geldig aantal beste scores in.");
+      setScoreCountBySeason((current) => ({
+        ...current,
+        [season.id]: String(season.topScoresCount)
+      }));
+      return;
+    }
+
+    if (parsed === season.topScoresCount) {
+      return;
+    }
+
+    try {
+      await apiSend(`/api/seasons/${season.id}`, "PATCH", {
+        topScoresCount: parsed
+      });
+      await loadSeasons();
+    } catch (err) {
+      setError("Aantal beste scores opslaan mislukt.");
+      setScoreCountBySeason((current) => ({
+        ...current,
+        [season.id]: String(season.topScoresCount)
+      }));
     }
   };
 
@@ -117,7 +156,37 @@ export function SeasonsPage() {
               }}
             >
               <Box>
-                <Typography variant="h6">{season.name}</Typography>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={2}
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                >
+                  <Typography variant="h6">{season.name}</Typography>
+                  <TextField
+                    label="Beste scores"
+                    type="number"
+                    size="small"
+                    value={scoreCountBySeason[season.id] ?? String(season.topScoresCount)}
+                    onChange={(event) =>
+                      setScoreCountBySeason((current) => ({
+                        ...current,
+                        [season.id]: event.target.value
+                      }))
+                    }
+                    onBlur={(event) => updateScoreCount(season, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        updateScoreCount(
+                          season,
+                          (event.target as HTMLInputElement).value
+                        );
+                      }
+                    }}
+                    inputProps={{ min: 1 }}
+                    disabled={season.isArchived}
+                    sx={{ maxWidth: 160 }}
+                  />
+                </Stack>
                 {(season.startDate || season.endDate) && (
                   <Typography variant="body2" color="text.secondary">
                     {season.startDate && season.endDate

@@ -96,6 +96,9 @@ export function RankingPage() {
     void loadRanking(seasonId);
   }, [seasonId]);
 
+  const activeSeason =
+    seasonId === "" ? null : seasons.find((season) => season.id === seasonId) ?? null;
+
   return (
     <Stack spacing={3}>
       <Box>
@@ -122,6 +125,11 @@ export function RankingPage() {
               </MenuItem>
             ))}
           </TextField>
+          {activeSeason && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Beste {activeSeason.topScoresCount} scores tellen mee voor het klassement.
+            </Typography>
+          )}
         </CardContent>
       </Card>
 

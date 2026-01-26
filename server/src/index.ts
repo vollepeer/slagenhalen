@@ -205,6 +205,7 @@ app.get("/api/seasons", async (req, res) => {
     seasons.map((season) => ({
       id: season.id,
       name: season.name,
+      topScoresCount: season.topScoresCount,
       startDate: season.startDate,
       endDate: season.endDate,
       isArchived: season.isArchived
@@ -224,6 +225,7 @@ app.post("/api/seasons", async (req, res) => {
     const newSeason: Season = {
       id: nextId(store, "seasons"),
       name,
+      topScoresCount: parsed.data.topScoresCount ?? 7,
       startDate: parsed.data.startDate ?? null,
       endDate: parsed.data.endDate ?? null,
       isArchived: false,
@@ -250,6 +252,7 @@ app.patch("/api/seasons/:id", async (req, res) => {
 
   if (
     parsed.data.name === undefined &&
+    parsed.data.topScoresCount === undefined &&
     parsed.data.startDate === undefined &&
     parsed.data.endDate === undefined &&
     parsed.data.isArchived === undefined
@@ -265,6 +268,10 @@ app.patch("/api/seasons/:id", async (req, res) => {
     let updated = false;
     if (parsed.data.name !== undefined) {
       season.name = parsed.data.name.trim();
+      updated = true;
+    }
+    if (parsed.data.topScoresCount !== undefined) {
+      season.topScoresCount = parsed.data.topScoresCount;
       updated = true;
     }
     if (parsed.data.startDate !== undefined) {
@@ -694,6 +701,8 @@ app.get("/api/seasons/:id/ranking", async (req, res) => {
   const seasonId = Number(req.params.id);
   const store = await readStore();
 
+  const season = store.seasons.find((entry) => entry.id === seasonId);
+  const topScoresCount = season?.topScoresCount ?? 7;
   const events = store.events.filter((event) => event.seasonId === seasonId);
   const relevant = events.filter((event) => !event.isArchived);
   const openEvents = relevant.filter((event) => event.status !== "LOCKED");
@@ -736,23 +745,30 @@ app.get("/api/seasons/:id/ranking", async (req, res) => {
       Boolean(row)
     );
 
-  const totals = new Map<
-    number,
-    { playerId: number; playerName: string; total: number; appearances: number }
-  >();
+  const totals = new Map<number, { playerId: number; playerName: string; scores: number[] }>();
   for (const row of rows) {
     const entry = totals.get(row.player_id) || {
       playerId: row.player_id,
       playerName: row.player_name,
-      total: 0,
-      appearances: 0
+      scores: []
     };
-    entry.total += row.total_points;
-    entry.appearances += 1;
+    entry.scores.push(row.total_points);
     totals.set(row.player_id, entry);
   }
 
-  const ranking = Array.from(totals.values()).sort((a, b) => b.total - a.total);
+  const ranking = Array.from(totals.values())
+    .map((entry) => {
+      const sortedScores = [...entry.scores].sort((a, b) => b - a);
+      const usedScores = sortedScores.slice(0, topScoresCount);
+      const total = usedScores.reduce((sum, score) => sum + score, 0);
+      return {
+        playerId: entry.playerId,
+        playerName: entry.playerName,
+        total,
+        appearances: usedScores.length
+      };
+    })
+    .sort((a, b) => b.total - a.total);
   const seenTotals = new Set<number>();
   const tieWarning = ranking.some((entry) => {
     if (seenTotals.has(entry.total)) return true;
