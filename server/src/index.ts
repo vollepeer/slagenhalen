@@ -36,6 +36,14 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function todayIsoLocal() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function normalizeName(value: string) {
   return value.trim().toLowerCase();
 }
@@ -404,6 +412,7 @@ app.get("/api/events/:id", async (req, res) => {
       rankR3: participant.rank_r3
     })),
     roundWinners: ranking.roundWinners,
+    eventWinners: ranking.eventWinners,
     eventWinner: ranking.eventWinner,
     tieErrors: ranking.tieErrors,
     canLock: lockCheck.allowed,
@@ -705,13 +714,16 @@ app.get("/api/seasons/:id/ranking", async (req, res) => {
   const topScoresCount = season?.topScoresCount ?? 7;
   const events = store.events.filter((event) => event.seasonId === seasonId);
   const relevant = events.filter((event) => !event.isArchived);
-  const openEvents = relevant.filter((event) => event.status !== "LOCKED");
-  if (openEvents.length > 0) {
+  const today = todayIsoLocal();
+  const blockingOpenEvents = relevant.filter(
+    (event) => event.status !== "LOCKED" && event.eventDate <= today
+  );
+  if (blockingOpenEvents.length > 0) {
     return res.json({
       available: false,
       message:
-        "Het klassement is pas beschikbaar wanneer alle kaartavonden van dit seizoen zijn vergrendeld.",
-      openEventIds: openEvents.map((event) => event.id)
+        "Het klassement is pas beschikbaar wanneer alle kaartavonden tot en met vandaag zijn vergrendeld.",
+      openEventIds: blockingOpenEvents.map((event) => event.id)
     });
   }
 

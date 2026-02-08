@@ -376,9 +376,11 @@ export function EventDetailPage() {
     );
   }
 
-  const endWinnerSuffix = event.eventWinner
-    ? formatPoints(getTotalPoints(event.eventWinner.playerName))
-    : "";
+  const endWinners = event.eventWinners.length > 0
+    ? event.eventWinners
+    : event.eventWinner
+      ? [event.eventWinner]
+      : [];
 
   return (
     <Stack spacing={3}>
@@ -743,11 +745,16 @@ export function EventDetailPage() {
                   </Typography>
                 </Stack>
                 <Box sx={{ mt: 1 }}>
-                  {event.eventWinner ? (
-                    <Typography>
-                      Rang {event.eventWinner.rank}: {formatWinnerLabel(event.eventWinner.playerName)}
-                      {endWinnerSuffix ? ` · ${endWinnerSuffix}` : ""}
-                    </Typography>
+                  {endWinners.length > 0 ? (
+                    endWinners.map((winner, index) => {
+                      const suffix = formatPoints(getTotalPoints(winner.playerName));
+                      return (
+                        <Typography key={`event-winner-${winner.rank}-${winner.playerName}-${index}`}>
+                          Rang {winner.rank}: {formatWinnerLabel(winner.playerName)}
+                          {suffix ? ` · ${suffix}` : ""}
+                        </Typography>
+                      );
+                    })
                   ) : (
                     <Typography variant="body2" color="text.secondary">
                       Nog geen eindwinnaar beschikbaar.

@@ -21,6 +21,7 @@ export type RankingResult = {
     round: 1 | 2 | 3;
     winners: Array<{ rank: number; playerName: string }>;
   }>;
+  eventWinners: Array<{ rank: number; playerName: string }>;
   eventWinner: { rank: number; playerName: string } | null;
 };
 
@@ -141,19 +142,25 @@ export function computeRanking(
     return { round, winners };
   });
 
-  const totalSorted = [...totalEligible].sort((a, b) => b.total - a.total);
-  const winnerId = totalSorted[0]?.id ?? null;
-  const eventWinner = winnerId
-    ? participants.find((p) => p.id === winnerId) ?? null
-    : null;
+  const highestTotal = totalEligible.reduce<number | null>((currentMax, entry) => {
+    if (currentMax === null || entry.total > currentMax) {
+      return entry.total;
+    }
+    return currentMax;
+  }, null);
+  const eventWinners =
+    highestTotal === null
+      ? []
+      : participants
+          .filter((participant) => participant.total_points === highestTotal)
+          .map((participant) => ({ rank: 1, playerName: participant.player_name }));
 
   return {
     participants,
     tieErrors,
     roundWinners,
-    eventWinner: eventWinner
-      ? { rank: 1, playerName: eventWinner.player_name }
-      : null
+    eventWinners,
+    eventWinner: eventWinners[0] ?? null
   };
 }
 

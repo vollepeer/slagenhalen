@@ -51,6 +51,7 @@ export type EventDetail = {
     round: 1 | 2 | 3;
     winners: Array<{ rank: number; playerName: string }>;
   }>;
+  eventWinners: Array<{ rank: number; playerName: string }>;
   eventWinner: { rank: number; playerName: string } | null;
   tieErrors: string[];
   canLock: boolean;
