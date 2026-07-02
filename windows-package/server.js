@@ -27,7 +27,15 @@ const MIME_TYPES = {
 };
 
 function safeResolve(urlPath) {
-  const decoded = decodeURIComponent(urlPath.split("?")[0].split("#")[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split("?")[0].split("#")[0]);
+  } catch (err) {
+    return null;
+  }
+  if (decoded.indexOf("\0") !== -1) {
+    return null;
+  }
   const resolved = path.normalize(path.join(ROOT, decoded));
   if (resolved !== ROOT && !resolved.startsWith(ROOT + path.sep)) {
     return null;
