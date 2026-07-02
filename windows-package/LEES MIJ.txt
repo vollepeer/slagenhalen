@@ -1,0 +1,40 @@
+FILIP KAARTAVOND — OFFLINE VERSIE
+==================================
+
+STARTEN
+-------
+Dubbelklik op "Start Filip Kaartavond.bat".
+Er verschijnt een zwart venster en na een paar seconden opent je browser
+vanzelf met de app.
+
+STOPPEN
+-------
+Sluit het zwarte venster om de app te stoppen.
+
+SNELKOPPELING OP BUREAUBLAD (optioneel, eenmalig)
+--------------------------------------------------
+Dubbelklik één keer op "Maak snelkoppeling.bat".
+Er verschijnt daarna een icoon "Filip Kaartavond" op je bureaublad waarmee
+je de app voortaan rechtstreeks kan starten.
+
+WAARSCHUWING VAN WINDOWS ("SmartScreen")
+-----------------------------------------
+Omdat deze map niet uit de Microsoft Store komt, kan Windows de eerste keer
+een waarschuwing tonen ("Windows heeft de pc beschermd" of gelijkaardig).
+Klik op "Meer info" en daarna op "Toch uitvoeren" om verder te gaan.
+
+JE GEGEVENS
+------------
+Alle gegevens (spelers, seizoenen, kaartavonden, scores) worden lokaal
+bewaard in de browser die opent (meestal Microsoft Edge), gekoppeld aan
+http://localhost:8000. Gebruik de app dus altijd via dezelfde snelkoppeling,
+en wis geen browsergegevens voor deze site.
+
+Maak regelmatig een back-up via het tabblad "Databeheer" in de app zelf
+(exporteren/importeren), zeker voor je iets ingrijpends doet.
+
+VERPLAATSEN
+------------
+Deze hele map mag je gerust verplaatsen (bv. naar een USB-stick of een
+andere pc) — alles wat nodig is zit erin. Maak nadien wel opnieuw een
+snelkoppeling met "Maak snelkoppeling.bat" als je die had gemaakt.
