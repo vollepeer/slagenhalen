@@ -1,4 +1,4 @@
-# Filip Card
+# KaartBuddy
 
 Offline score- en rangschikkingsapp voor wekelijkse kaartavonden (Nederlandse UI) met lokale browseropslag (geen backend).
 

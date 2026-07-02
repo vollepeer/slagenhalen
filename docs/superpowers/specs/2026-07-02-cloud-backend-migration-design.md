@@ -4,7 +4,7 @@ Branch: `cloud-modernization`
 
 ## 0. Context and scope
 
-This app ("Filip Card" / slagenhalen) currently runs fully offline: a React + MUI client persists everything to browser `localStorage` (`client/src/localApi.ts` + `localStore.ts`). A previous, abandoned attempt at a Node/Express + JSON-file backend exists in `server/` but is dead code — nothing in the running app calls it.
+This app (now named "KaartBuddy"; repo/legacy name "Filip Card" / slagenhalen) currently runs fully offline: a React + MUI client persists everything to browser `localStorage` (`client/src/localApi.ts` + `localStore.ts`). A previous, abandoned attempt at a Node/Express + JSON-file backend exists in `server/` but is dead code — nothing in the running app calls it.
 
 The overall mission has two independent goals:
 1. **Move storage to a reliable cloud backend** (Netlify + Supabase), with real backup/disaster-recovery.

@@ -47,7 +47,7 @@ export function App() {
       >
         <Box sx={{ px: 2.5, py: 2 }}>
           <Typography variant="h6" sx={{ color: "#1f3a5f", fontWeight: 700 }}>
-            Slagen halen
+            KaartBuddy
           </Typography>
         </Box>
         <Box sx={{ px: 2.5, pb: 2 }}>
