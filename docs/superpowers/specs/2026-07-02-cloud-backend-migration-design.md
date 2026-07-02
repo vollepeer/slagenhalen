@@ -65,7 +65,7 @@ Design:
 
 Decision: stay on Supabase's free tier (no point-in-time recovery add-on) and rely on our own scheduled export instead, to keep ongoing cost at zero.
 
-- A shared `runBackupSnapshot()` routine (Netlify Function) reads all tables and writes one timestamped JSON file, committed to a **private GitHub repo** via the Contents API (separate from the app's source repo, to keep backup access control independent).
+- A shared `runBackupSnapshot()` routine (Netlify Function) reads all tables and writes one timestamped JSON file, committed via the Contents API to a `backups/` folder in the app's existing GitHub repo (`vollepeer/slagenhalen`) — one repo, no separate backup repo to provision or manage access for.
 - Triggered on:
   1. A **daily scheduled** Netlify Function (cron).
   2. **Immediately after any event is locked** — the point of highest data value, so a same-day disaster can't lose a just-finished event.
@@ -78,11 +78,14 @@ Supabase Auth, email + password (chosen over magic links specifically because lo
 
 ## 6. Data management screen
 
-The current "Databeheer" tab (arbitrary JSON export/import, wipe-all) doesn't make sense unchanged against shared, real, authenticated data — bulk import of an arbitrary file and a one-click full wipe are both too dangerous to leave as clickable UI actions once multiple people share one real dataset.
+The current "Databeheer" tab (JSON export, bulk import, wipe-all) is kept as-is, functionally, and re-implemented against the new backend instead of `localStorage`:
+- **Export** reads the current Supabase data via a Netlify Function and returns the same JSON shape as today.
+- **Import** replaces the current dataset from an uploaded JSON file, via a Netlify Function (server-side, using the service-role key — not a direct client-to-Supabase bulk write).
+- **Wipe all data** clears all tables via a Netlify Function.
 
-Replacement:
-- Keep a **"Download backup nu"** button that triggers `runBackupSnapshot()` and returns the file for immediate manual download (in addition to the automatic daily/on-lock triggers).
-- Remove bulk **import** and **wipe-all-data** from the UI entirely. If ever needed, those become deliberate operations run directly against Supabase (SQL/CLI), not exposed as an app button.
+All three remain gated behind login (§5) like the rest of the app, so this isn't an anonymous/public action — just an authenticated one, same trust level as score entry.
+
+Additionally, a **"Download backup nu"** button triggers `runBackupSnapshot()` on demand (in addition to the automatic daily/on-lock triggers in §4), for a manual just-in-case copy separate from the export feature above.
 
 ## 7. Testing
 
@@ -93,7 +96,7 @@ Replacement:
 ## 8. Rollout
 
 1. Build against a fresh Supabase project and a Netlify preview deploy, on this branch.
-2. Validate the daily and lock-triggered backup snapshots actually land in the GitHub backup repo.
+2. Validate the daily and lock-triggered backup snapshots actually land in the `backups/` folder of the GitHub repo.
 3. Do one full restore-from-snapshot dry run against a scratch Supabase project.
 4. Only then point the production URL/DNS at the new deployment.
 5. Keep the existing offline-packaged build (from the recent Windows packaging branch) available as a manual fallback during the first live cutover event, in case of an unexpected issue.
