@@ -1,1 +1,6 @@
 node_modules/
+
+# Windows offline package build artifacts (regenerate with windows-package/build.sh)
+/FilipKaartavond/
+/FilipKaartavond.zip
+/windows-package/.cache/

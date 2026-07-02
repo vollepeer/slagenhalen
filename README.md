@@ -31,3 +31,17 @@ De app draait op `http://localhost:5173` zonder aparte API.
 ## Specificaties
 
 Lees `docs/specs.md` voor alle bedrijfsregels, data model en acceptatietests.
+
+## Windows-pakket bouwen (offline, dummy-proof)
+
+Om een dubbelklik-bare offline versie voor Windows 11 te maken (geen Node of
+Python nodig op de doel-pc):
+
+```bash
+./windows-package/build.sh
+```
+
+Dit bouwt de client, bundelt een portable Node.js-runtime en zet alles klaar
+in `FilipKaartavond/` (en `FilipKaartavond.zip`). Kopieer die map of zip naar
+de Windows-pc — zie `windows-package/LEES MIJ.txt` voor de instructies die
+in de map meegaan.
