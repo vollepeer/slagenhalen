@@ -28,14 +28,14 @@
 **Interfaces:**
 - Produces: a Supabase project (URL, anon key, service-role key), a linked Netlify site, a GitHub PAT with contents read/write on `vollepeer/slagenhalen`, an orphan `backups` branch on that repo, and at least one named Supabase Auth user — all referenced by later tasks' env vars.
 
-- [ ] **Step 1: Create the Supabase project**
+- [x] **Step 1: Create the Supabase project**
 
 Via the Supabase dashboard, create a new project (name: `kaartbuddy`, choose a region close to the venue). From Project Settings → API, note down:
 - `Project URL` → will become `SUPABASE_URL`
 - `anon public` key → will become `VITE_SUPABASE_ANON_KEY`
 - `service_role` key → will become `SUPABASE_SERVICE_ROLE_KEY` (never expose this to the client)
 
-- [ ] **Step 2: Install and link the Supabase CLI**
+- [x] **Step 2: Install and link the Supabase CLI**
 
 ```bash
 brew install supabase/tap/supabase
@@ -44,7 +44,7 @@ supabase login
 
 (Linking to the project happens in Task 2 once `supabase init` has created the local project folder.)
 
-- [ ] **Step 3: Create and link the Netlify site**
+- [x] **Step 3: Create and link the Netlify site**
 
 ```bash
 npm install -g netlify-cli
@@ -54,11 +54,11 @@ netlify init
 
 Choose "Create & configure a new site", connect it to the `vollepeer/slagenhalen` GitHub repo, and set the initial deploy branch to `cloud-modernization` (switch to `main` at cutover in Task 16).
 
-- [ ] **Step 4: Create a GitHub PAT for backups**
+- [ ] **Step 4: Create a GitHub PAT for backups** — *deferred, not a current priority (2026-08-11); do manually before starting Task 11*
 
-Create a fine-grained Personal Access Token scoped only to `vollepeer/slagenhalen` with **Contents: Read and write** permission. Save the token value — it becomes `GITHUB_TOKEN`.
+Create a fine-grained Personal Access Token scoped only to `vollepeer/slagenhalen` with **Contents: Read and write** permission. Save the token value — it becomes `GITHUB_TOKEN` in `netlify/.env` (currently left blank).
 
-- [ ] **Step 5: Create the dedicated `backups` branch**
+- [ ] **Step 5: Create the dedicated `backups` branch** — *deferred, not a current priority (2026-08-11); do manually before starting Task 11*
 
 This branch must never be Netlify's deploy branch, so daily backup commits don't trigger app rebuilds:
 
@@ -70,7 +70,7 @@ git push origin backups
 git checkout cloud-modernization
 ```
 
-- [ ] **Step 6: Record environment variables**
+- [x] **Step 6: Record environment variables**
 
 Create (untracked, git-ignored) env files:
 
@@ -91,11 +91,11 @@ VITE_SUPABASE_ANON_KEY=<anon-key-from-step-1>
 
 Add both to `.gitignore` if not already covered by an existing `.env` ignore rule.
 
-- [ ] **Step 7: Create named user accounts**
+- [x] **Step 7: Create named user accounts**
 
 Via Supabase Dashboard → Authentication → Users → Add user, create one email+password account per person who will operate the app during events. No self-signup flow is built (matches the "everyone equal, admin-created accounts" decision).
 
-- [ ] **Step 8: Verify**
+- [x] **Step 8: Verify**
 
 ```bash
 supabase projects list   # shows the new project
@@ -113,7 +113,7 @@ netlify status            # shows the linked site and deploy branch
 **Interfaces:**
 - Produces: Postgres tables `players`, `seasons`, `events`, `event_participants`, `audit_log` with the columns and constraints every later task's repo layer queries against.
 
-- [ ] **Step 1: Initialize the Supabase project folder and link it**
+- [x] **Step 1: Initialize the Supabase project folder and link it**
 
 ```bash
 supabase init
@@ -122,7 +122,7 @@ supabase link --project-ref <your-project-ref>
 
 (`<your-project-ref>` is the subdomain segment of your `SUPABASE_URL`, e.g. `abcdefghijkl`.)
 
-- [ ] **Step 2: Write the migration**
+- [x] **Step 2: Write the migration**
 
 Create `supabase/migrations/20260702120000_init_schema.sql`:
 
@@ -201,7 +201,7 @@ create policy "authenticated_full_access" on event_participants for all to authe
 create policy "authenticated_full_access" on audit_log for all to authenticated using (true) with check (true);
 ```
 
-- [ ] **Step 3: Start Supabase locally and apply the migration**
+- [x] **Step 3: Start Supabase locally and apply the migration**
 
 ```bash
 supabase start
@@ -210,7 +210,7 @@ supabase db reset
 
 Expected: output ends with "Finished supabase db reset" and no errors. `supabase status` prints a local `API URL` (typically `http://127.0.0.1:54321`) and `service_role key` — copy these for Task 3's test env file.
 
-- [ ] **Step 4: Push the migration to the real hosted project**
+- [x] **Step 4: Push the migration to the real hosted project**
 
 ```bash
 supabase db push
@@ -218,7 +218,7 @@ supabase db push
 
 Expected: confirms the migration applied to the linked hosted project.
 
-- [ ] **Step 5: Verify with a manual query**
+- [x] **Step 5: Verify with a manual query**
 
 ```bash
 supabase db execute --sql "select table_name from information_schema.tables where table_schema = 'public' order by 1;"
@@ -226,7 +226,7 @@ supabase db execute --sql "select table_name from information_schema.tables wher
 
 Expected: lists `audit_log`, `event_participants`, `events`, `players`, `seasons`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add supabase/
@@ -249,7 +249,7 @@ git commit -m "Add Supabase schema migration for players, seasons, events, parti
 **Interfaces:**
 - Produces: `supabaseAdmin` (a configured `SupabaseClient`), `PlayerRow`/`Player`/`mapPlayer`, `SeasonRow`/`Season`/`mapSeason`, `EventRow`/`EventSummary`/`mapEventSummary`, and `resetDatabase()` — used by every repo/router task from here on.
 
-- [ ] **Step 1: Create `netlify/package.json`**
+- [x] **Step 1: Create `netlify/package.json`**
 
 ```json
 {
@@ -275,7 +275,7 @@ git commit -m "Add Supabase schema migration for players, seasons, events, parti
 }
 ```
 
-- [ ] **Step 2: Create `netlify/tsconfig.json`**
+- [x] **Step 2: Create `netlify/tsconfig.json`**
 
 ```json
 {
@@ -292,7 +292,7 @@ git commit -m "Add Supabase schema migration for players, seasons, events, parti
 }
 ```
 
-- [ ] **Step 3: Create `netlify/vitest.config.ts`**
+- [x] **Step 3: Create `netlify/vitest.config.ts`**
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -309,7 +309,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Create `netlify/.env.test.example`** (committed; the real `.env.test` is git-ignored)
+- [x] **Step 4: Create `netlify/.env.test.example`** (committed; the real `.env.test` is git-ignored)
 
 ```
 SUPABASE_URL=http://127.0.0.1:54321
@@ -318,13 +318,13 @@ SUPABASE_SERVICE_ROLE_KEY=replace-with-value-from-supabase-status
 
 Copy it to `netlify/.env.test` and fill in the real local values printed by `supabase status` (from Task 2, Step 3).
 
-- [ ] **Step 5: Install dependencies**
+- [x] **Step 5: Install dependencies**
 
 ```bash
 cd netlify && npm install
 ```
 
-- [ ] **Step 6: Create `netlify/lib/supabaseAdmin.ts`**
+- [x] **Step 6: Create `netlify/lib/supabaseAdmin.ts`**
 
 ```ts
 import { createClient } from "@supabase/supabase-js";
@@ -341,7 +341,7 @@ export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 });
 ```
 
-- [ ] **Step 7: Create `netlify/lib/types.ts`**
+- [x] **Step 7: Create `netlify/lib/types.ts`**
 
 ```ts
 export type PlayerRow = {
@@ -428,7 +428,7 @@ export function mapEventSummary(row: EventRow): EventSummary {
 }
 ```
 
-- [ ] **Step 8: Create `netlify/lib/testHelpers.ts`**
+- [x] **Step 8: Create `netlify/lib/testHelpers.ts`**
 
 ```ts
 import { supabaseAdmin } from "./supabaseAdmin";
@@ -442,7 +442,7 @@ export async function resetDatabase(): Promise<void> {
 }
 ```
 
-- [ ] **Step 9: Verify the package builds and connects**
+- [x] **Step 9: Verify the package builds and connects**
 
 ```bash
 cd netlify && npx tsc --noEmit
@@ -450,7 +450,7 @@ cd netlify && npx tsc --noEmit
 
 Expected: no type errors (there are no tests yet to run — this task only scaffolds).
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add netlify/package.json netlify/tsconfig.json netlify/vitest.config.ts netlify/.env.test.example netlify/lib
