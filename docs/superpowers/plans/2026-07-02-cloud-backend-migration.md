@@ -91,6 +91,8 @@ VITE_SUPABASE_ANON_KEY=<anon-key-from-step-1>
 
 Add both to `.gitignore` if not already covered by an existing `.env` ignore rule.
 
+> **Note (2026-08-11, added during Task 10):** `netlify/.env` is *not* actually read by `netlify dev` — Netlify Dev only auto-loads `.env` files from the project's `base` directory (repo root, per `netlify.toml`'s `base = "."`), not subdirectories. The smoke test in Task 10 failed with `SUPABASE_URL en SUPABASE_SERVICE_ROLE_KEY moeten ingesteld zijn.` until a root-level `.env` (combining `netlify/.env` + `client/.env`'s contents, gitignored via the existing generic `.env` rule) was created. Keep `netlify/.env` around for consistency with this doc, but for `netlify dev` to actually work, also maintain a root `.env` with the same values.
+
 - [x] **Step 7: Create named user accounts**
 
 Via Supabase Dashboard → Authentication → Users → Add user, create one email+password account per person who will operate the app during events. No self-signup flow is built (matches the "everyone equal, admin-created accounts" decision).
@@ -201,6 +203,10 @@ create policy "authenticated_full_access" on event_participants for all to authe
 create policy "authenticated_full_access" on audit_log for all to authenticated using (true) with check (true);
 ```
 
+> **Note (2026-08-11):** this migration enables RLS and adds policies but never grants base table privileges. RLS only applies after a role already has table-level GRANTs — without them, PostgREST returns `permission denied for table X` for `service_role` and `authenticated` alike, even with a correctly-signed JWT. A follow-up migration (`20260811223000_grant_table_privileges.sql`, added during Task 6) grants `service_role`/`authenticated` full privileges plus `ALTER DEFAULT PRIVILEGES` so future tables in later migrations inherit the same grants automatically. If re-running this plan from scratch, consider folding those grants into this migration directly instead of a follow-up.
+>
+> **Note (2026-08-11, added during Task 8):** `audit_log.user_id` has a FK to `auth.users(id)`. The fixed test-fixture `userId` (`00000000-0000-0000-0000-000000000000`) used throughout `netlify/lib/*.test.ts` (Task 8 onward) violates that FK until a matching row exists. A `supabase/seed.sql` was added to insert that test user — it only runs on local `supabase db reset`/`start`, never on `supabase db push`, so it has no effect on the hosted project or the real named users from Task 1.
+
 - [x] **Step 3: Start Supabase locally and apply the migration**
 
 ```bash
@@ -304,10 +310,13 @@ export default defineConfig({
   test: {
     environment: "node",
     hookTimeout: 20000,
-    testTimeout: 20000
+    testTimeout: 20000,
+    fileParallelism: false
   }
 });
 ```
+
+> **Note (2026-08-11, added during Task 7):** `fileParallelism: false` is required, not optional. All `lib/*.test.ts` files share one local Postgres instance via `resetDatabase()` in `beforeEach`; Vitest's default file-level parallelism runs multiple test files concurrently, so one file's reset/inserts interleaved with another's, causing flaky duplicate-key errors and empty-result assertions once more than one DB-backed test file existed (surfaced when `events.test.ts` was added alongside `players.test.ts`/`seasons.test.ts`). Running files sequentially fixed it without slowing any single task's test run.
 
 - [x] **Step 4: Create `netlify/.env.test.example`** (committed; the real `.env.test` is git-ignored)
 
@@ -469,7 +478,7 @@ git commit -m "Scaffold netlify/ functions package with Supabase admin client an
 - Consumes: nothing (pure functions).
 - Produces: `ParticipantRow`, `RankedParticipant`, `RankingResult`, `computeRanking(rows, prizeRanks?)`, `canLockEvent(participants, tieErrors)` — used by the router in Tasks 8–9.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `netlify/lib/ranking.test.ts`:
 
@@ -543,7 +552,7 @@ describe("canLockEvent", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 ```bash
 cd netlify && npx vitest run lib/ranking.test.ts
@@ -551,7 +560,7 @@ cd netlify && npx vitest run lib/ranking.test.ts
 
 Expected: FAIL — `./ranking` cannot be found.
 
-- [ ] **Step 3: Create `netlify/lib/ranking.ts`**
+- [x] **Step 3: Create `netlify/lib/ranking.ts`**
 
 Copy `server/src/ranking.ts` verbatim (it is framework-agnostic — no changes needed):
 
@@ -740,7 +749,7 @@ export function canLockEvent(participants: RankedParticipant[], tieErrors: strin
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 cd netlify && npx vitest run lib/ranking.test.ts
@@ -748,7 +757,7 @@ cd netlify && npx vitest run lib/ranking.test.ts
 
 Expected: PASS (6 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add netlify/lib/ranking.ts netlify/lib/ranking.test.ts
@@ -903,7 +912,7 @@ git commit -m "Port zod validators with unit tests"
 
 **Prerequisite:** `supabase start` must be running (Task 2) with `netlify/.env.test` pointing at it (Task 3).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `netlify/lib/players.test.ts`:
 
@@ -966,7 +975,7 @@ describe("seasons repo", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd netlify && npx vitest run lib/players.test.ts lib/seasons.test.ts
@@ -974,7 +983,7 @@ cd netlify && npx vitest run lib/players.test.ts lib/seasons.test.ts
 
 Expected: FAIL — modules not found.
 
-- [ ] **Step 3: Create `netlify/lib/players.ts`**
+- [x] **Step 3: Create `netlify/lib/players.ts`**
 
 ```ts
 import { supabaseAdmin } from "./supabaseAdmin";
@@ -1028,7 +1037,7 @@ export async function updatePlayerRow(
 }
 ```
 
-- [ ] **Step 4: Create `netlify/lib/seasons.ts`**
+- [x] **Step 4: Create `netlify/lib/seasons.ts`**
 
 ```ts
 import { supabaseAdmin } from "./supabaseAdmin";
@@ -1086,7 +1095,7 @@ export async function updateSeasonRow(
 }
 ```
 
-- [ ] **Step 5: Create `netlify/lib/auditLog.ts`**
+- [x] **Step 5: Create `netlify/lib/auditLog.ts`**
 
 ```ts
 import { supabaseAdmin } from "./supabaseAdmin";
@@ -1112,7 +1121,7 @@ export async function insertAuditLog(entry: {
 }
 ```
 
-- [ ] **Step 6: Run to verify pass**
+- [x] **Step 6: Run to verify pass**
 
 ```bash
 cd netlify && npx vitest run lib/players.test.ts lib/seasons.test.ts
@@ -1120,7 +1129,7 @@ cd netlify && npx vitest run lib/players.test.ts lib/seasons.test.ts
 
 Expected: PASS (5 tests).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add netlify/lib/players.ts netlify/lib/players.test.ts netlify/lib/seasons.ts netlify/lib/seasons.test.ts netlify/lib/auditLog.ts
@@ -1141,7 +1150,7 @@ git commit -m "Add players, seasons, and audit log data access layer"
 
 **Prerequisite:** `supabase start` running, as in Task 6.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `netlify/lib/events.test.ts`:
 
@@ -1199,7 +1208,7 @@ describe("events repo", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd netlify && npx vitest run lib/events.test.ts
@@ -1207,7 +1216,7 @@ cd netlify && npx vitest run lib/events.test.ts
 
 Expected: FAIL — `./events` not found.
 
-- [ ] **Step 3: Create `netlify/lib/events.ts`**
+- [x] **Step 3: Create `netlify/lib/events.ts`**
 
 ```ts
 import { supabaseAdmin } from "./supabaseAdmin";
@@ -1367,7 +1376,7 @@ export async function deleteParticipantRow(eventId: number, participantId: numbe
 }
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 ```bash
 cd netlify && npx vitest run lib/events.test.ts
@@ -1375,7 +1384,7 @@ cd netlify && npx vitest run lib/events.test.ts
 
 Expected: PASS (2 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add netlify/lib/events.ts netlify/lib/events.test.ts
@@ -1394,7 +1403,7 @@ git commit -m "Add events and participants data access layer"
 - Consumes: `players.ts`, `seasons.ts`, `auditLog.ts` (Task 6).
 - Produces: `ApiError`, `RequestContext`, `ApiResult`, `handleApiRequest(method, pathname, params, body, ctx)` — the single entry point the Netlify Function (Task 10) calls, and that Task 9 extends with events/participants/lock/ranking routes.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `netlify/lib/router.test.ts`:
 
@@ -1443,7 +1452,7 @@ describe("seasons endpoints", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd netlify && npx vitest run lib/router.test.ts
@@ -1451,7 +1460,7 @@ cd netlify && npx vitest run lib/router.test.ts
 
 Expected: FAIL — `./router` not found.
 
-- [ ] **Step 3: Create `netlify/lib/router.ts`**
+- [x] **Step 3: Create `netlify/lib/router.ts`**
 
 ```ts
 import { insertAuditLog } from "./auditLog";
@@ -1617,7 +1626,7 @@ async function dispatch(
 }
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 ```bash
 cd netlify && npx vitest run lib/router.test.ts
@@ -1625,7 +1634,7 @@ cd netlify && npx vitest run lib/router.test.ts
 
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add netlify/lib/router.ts netlify/lib/router.test.ts
@@ -1644,7 +1653,7 @@ git commit -m "Add players and seasons API router with tests"
 - Consumes: `computeRanking`, `canLockEvent` (Task 4); `events.ts` functions (Task 7).
 - Produces: extends `handleApiRequest` to cover `/api/events*` and `/api/seasons/:id/ranking` — the full surface Task 10's Netlify Function exposes.
 
-- [ ] **Step 1: Append the failing tests**
+- [x] **Step 1: Append the failing tests**
 
 Add to `netlify/lib/router.test.ts`:
 
@@ -1725,7 +1734,7 @@ describe("season ranking endpoint", () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 ```bash
 cd netlify && npx vitest run lib/router.test.ts
@@ -1733,7 +1742,7 @@ cd netlify && npx vitest run lib/router.test.ts
 
 Expected: FAIL — the new routes 404 because they don't exist yet.
 
-- [ ] **Step 3: Add imports to the top of `netlify/lib/router.ts`**
+- [x] **Step 3: Add imports to the top of `netlify/lib/router.ts`**
 
 ```ts
 import { canLockEvent, computeRanking } from "./ranking";
@@ -1753,7 +1762,7 @@ import {
 import type { EventRow } from "./types";
 ```
 
-- [ ] **Step 4: Insert the new route blocks in `dispatch()`**
+- [x] **Step 4: Insert the new route blocks in `dispatch()`**
 
 Insert this directly above the final `throw new ApiError(404, "Niet gevonden.");` line in `dispatch()`:
 
@@ -1971,7 +1980,7 @@ Insert this directly above the final `throw new ApiError(404, "Niet gevonden.");
   }
 ```
 
-- [ ] **Step 5: Add helper functions below `dispatch()` in `netlify/lib/router.ts`**
+- [x] **Step 5: Add helper functions below `dispatch()` in `netlify/lib/router.ts`**
 
 ```ts
 function validatePrizeRanks(prizeRanks: number[]): string | null {
@@ -2083,7 +2092,7 @@ async function getSeasonRanking(seasonId: number) {
 }
 ```
 
-- [ ] **Step 6: Run to verify pass**
+- [x] **Step 6: Run to verify pass**
 
 ```bash
 cd netlify && npx vitest run lib/router.test.ts
@@ -2091,7 +2100,7 @@ cd netlify && npx vitest run lib/router.test.ts
 
 Expected: PASS (all suites, 7 tests total).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add netlify/lib/router.ts netlify/lib/router.test.ts
@@ -2110,7 +2119,7 @@ git commit -m "Add events, participants, lock/unlock and season ranking routes"
 - Consumes: `handleApiRequest` (Task 8/9), `supabaseAdmin` (Task 3).
 - Produces: a deployed/local HTTP endpoint at `/api/*` that the client (Task 13) calls.
 
-- [ ] **Step 1: Create `netlify/functions/api.ts`**
+- [x] **Step 1: Create `netlify/functions/api.ts`**
 
 ```ts
 import type { Config, Context } from "@netlify/functions";
@@ -2150,7 +2159,7 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 ```
 
-- [ ] **Step 2: Create `netlify.toml` at the repo root**
+- [x] **Step 2: Create `netlify.toml` at the repo root**
 
 ```toml
 [build]
@@ -2163,7 +2172,7 @@ function jsonResponse(status: number, body: unknown): Response {
   node_bundler = "esbuild"
 ```
 
-- [ ] **Step 3: Run the smoke test**
+- [x] **Step 3: Run the smoke test**
 
 ```bash
 netlify dev
@@ -2192,7 +2201,7 @@ curl http://localhost:8888/api/players
 
 Expected: `{"message":"Niet ingelogd."}` with a 401 status (no `Authorization` header).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add netlify/functions/api.ts netlify.toml
