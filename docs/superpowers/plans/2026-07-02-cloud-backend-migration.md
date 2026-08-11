@@ -2735,7 +2735,15 @@ Inside the `Drawer`, right after the `KaartBuddy` `Typography` block, add:
           </Button>
 ```
 
-- [ ] **Step 7: Manually verify**
+- [ ] **Step 7: Run the build to verify it typechecks**
+
+```bash
+cd client && npm run build
+```
+
+Expected: PASS — no TypeScript errors.
+
+- [ ] **Step 8: Manually verify**
 
 ```bash
 cd client && npm run dev
@@ -2743,7 +2751,7 @@ cd client && npm run dev
 
 Expected: visiting `http://localhost:5173` shows the login form (not the app), since no Supabase session exists yet. Logging in with the Task 1 test user's credentials reveals the app shell.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add client/package.json client/package-lock.json client/src/supabaseClient.ts client/src/auth client/src/pages/LoginPage.tsx client/src/App.tsx client/src/main.tsx
@@ -3243,7 +3251,15 @@ export function DataPage() {
 }
 ```
 
-- [ ] **Step 2: Manually verify**
+- [ ] **Step 2: Run the build to verify it typechecks**
+
+```bash
+cd client && npm run build
+```
+
+Expected: PASS — no TypeScript errors.
+
+- [ ] **Step 3: Manually verify**
 
 ```bash
 netlify dev
@@ -3251,7 +3267,7 @@ netlify dev
 
 Log in, go to "Databeheer", click "Exporteer back-up" (downloads a JSON file with empty arrays if no data yet), add a couple of players and a season elsewhere in the app, export again (confirm they appear), then click "Download back-up nu" and confirm a new commit lands in the `backups` branch of the GitHub repo.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add client/src/pages/DataPage.tsx
@@ -3394,6 +3410,4 @@ Follow `docs/RESTORE_RUNBOOK.md` once more, this time restoring a snapshot back 
 
 In the Netlify dashboard, change the site's production deploy branch from `cloud-modernization` to `main`. Merge `cloud-modernization` into `main` (following your normal PR process). Point any bookmarks/shortcuts at the new Netlify URL.
 
-- [ ] **Step 7: Keep the offline fallback ready**
-
-Confirm the most recent Windows-packaged offline build (from the earlier offline-windows-package branch) is available and launchable, as a manual fallback for the first live event on the new stack, per the design's rollout plan (§8).
+This is a clean replacement, not a parallel run: there is no historical data to migrate (design §2) and no user-facing transition period. Once cutover completes, the new stack is the only version in use — no offline fallback is kept on standby.
