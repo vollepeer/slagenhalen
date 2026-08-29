@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace KaartBuddy's browser-localStorage data layer with Supabase (Postgres + Auth) behind Netlify Functions, keeping the existing MUI UI, and add automated GitHub-committed backups — without changing any business rule in `docs/specs.md`.
+**Goal:** Replace KaartBuddy's browser-localStorage data layer with Supabase (Postgres + Auth) behind Netlify Functions, keeping the existing MUI UI, and add automated off-platform backups to Cloudflare R2 — without changing any business rule in `docs/specs.md`.
 
-**Architecture:** A single Netlify Function (`netlify/functions/api.ts`, path `/api/*`) holds all business logic (ranking, lock validation, uniqueness checks) ported from the dead `server/src/` code and the maintained `client/src/localApi.ts`, talking to Supabase Postgres via the service-role key. The client keeps its current MUI pages, swaps `client/src/api.ts` from localStorage to real `fetch` calls, adds a Supabase Auth login screen, and adds a localStorage-backed retry queue for transient network drops. A second scheduled Netlify Function commits daily (and post-lock) JSON snapshots to a dedicated `backups` branch of the app's own GitHub repo.
+**Architecture:** A single Netlify Function (`netlify/functions/api.ts`, path `/api/*`) holds all business logic (ranking, lock validation, uniqueness checks) ported from the dead `server/src/` code and the maintained `client/src/localApi.ts`, talking to Supabase Postgres via the service-role key. The client keeps its current MUI pages, swaps `client/src/api.ts` from localStorage to real `fetch` calls, adds a Supabase Auth login screen, and adds a localStorage-backed retry queue for transient network drops. A second scheduled Netlify Function uploads daily (and post-lock) JSON snapshots to a Cloudflare R2 bucket over R2's S3-compatible API.
 
-**Tech Stack:** TypeScript, Supabase (Postgres + Auth + CLI), Netlify Functions v2, Vitest, existing React 18 + MUI 5 client (unchanged in this phase), `@supabase/supabase-js`, zod.
+**Tech Stack:** TypeScript, Supabase (Postgres + Auth + CLI), Netlify Functions v2, Cloudflare R2 (S3-compatible object storage), Vitest, existing React 18 + MUI 5 client (unchanged in this phase), `@supabase/supabase-js`, `aws4fetch`, zod.
 
 ## Global Constraints
 
@@ -15,7 +15,8 @@
 - Server-side validation is authoritative regardless of client state (design §3).
 - No role-based permissions — every authenticated user has full access (design §5).
 - No historical data migration is needed — schema starts empty (design §2).
-- Backups commit to the **same** GitHub repo (`vollepeer/slagenhalen`), in a `backups/` folder on a dedicated `backups` branch — never the branch Netlify deploys from (design §4, revised).
+- Backups are written to a Cloudflare R2 bucket (`kaartbuddy-backups`) on a different provider than the primary data, so a full Supabase outage or account loss cannot take the backups with it (design §4, revised 2026-08-29 — supersedes the earlier GitHub-branch approach).
+- Backup keys: timestamped history under `snapshots/`, plus a `latest.json` pointer object overwritten on every run so restores never need object listing.
 - Databeheer keeps export, bulk import, and wipe-all functionally as they exist today, re-implemented against the new backend (design §6, revised).
 - Supabase stays on the free tier; no paid PITR add-on (design §4).
 
@@ -26,7 +27,7 @@
 **Files:** none (manual/dashboard steps producing config values used by later tasks).
 
 **Interfaces:**
-- Produces: a Supabase project (URL, anon key, service-role key), a linked Netlify site, a GitHub PAT with contents read/write on `vollepeer/slagenhalen`, an orphan `backups` branch on that repo, and at least one named Supabase Auth user — all referenced by later tasks' env vars.
+- Produces: a Supabase project (URL, anon key, service-role key), a linked Netlify site, a Cloudflare R2 bucket with an Object Read & Write API token (account ID, access key ID, secret access key), and at least one named Supabase Auth user — all referenced by later tasks' env vars.
 
 - [x] **Step 1: Create the Supabase project**
 
@@ -54,21 +55,27 @@ netlify init
 
 Choose "Create & configure a new site", connect it to the `vollepeer/slagenhalen` GitHub repo, and set the initial deploy branch to `cloud-modernization` (switch to `main` at cutover in Task 16).
 
-- [ ] **Step 4: Create a GitHub PAT for backups** — *deferred, not a current priority (2026-08-11); do manually before starting Task 11*
+- [ ] **Step 4: Create the Cloudflare R2 bucket and API token** — *do manually before starting Task 11*
 
-Create a fine-grained Personal Access Token scoped only to `vollepeer/slagenhalen` with **Contents: Read and write** permission. Save the token value — it becomes `GITHUB_TOKEN` in `netlify/.env` (currently left blank).
+R2's free tier (10 GB storage, 1M writes/month, 10M reads/month, no egress fees) is far beyond what daily JSON snapshots of this app will ever use, and it lives on a different provider than Supabase — which is the whole point of keeping backups off-platform.
 
-- [ ] **Step 5: Create the dedicated `backups` branch** — *deferred, not a current priority (2026-08-11); do manually before starting Task 11*
+1. Create a free Cloudflare account (no card required for the R2 free tier — R2 does ask you to add a payment method to *enable* R2 on some accounts; usage stays within the free allowance regardless).
+2. Dashboard → **R2 Object Storage** → **Create bucket**, name it `kaartbuddy-backups`, location hint: EU (closest to the venue). Leave public access **disabled** — backups must never be world-readable.
+3. Note the **Account ID** shown in the R2 overview sidebar → becomes `R2_ACCOUNT_ID`.
+4. R2 → **Manage R2 API Tokens** → **Create API token**:
+   - Permission: **Object Read & Write**
+   - Scope: **Apply to specific buckets only** → `kaartbuddy-backups`
+   - TTL: forever
+5. On the result screen, copy the **Access Key ID** (→ `R2_ACCESS_KEY_ID`) and **Secret Access Key** (→ `R2_SECRET_ACCESS_KEY`). The secret is shown **once** — save it before closing the page. Ignore the token *value* at the top; the S3 code path uses the access-key pair, not the bearer token.
 
-This branch must never be Netlify's deploy branch, so daily backup commits don't trigger app rebuilds:
+- [ ] **Step 5: Add a retention lifecycle rule to the bucket** — *do manually before starting Task 11*
 
-```bash
-git checkout --orphan backups
-git rm -rf .
-git commit --allow-empty -m "Init backups branch"
-git push origin backups
-git checkout cloud-modernization
-```
+Without this, snapshots accumulate forever. In the Cloudflare dashboard: bucket `kaartbuddy-backups` → **Settings** → **Object lifecycle rules** → **Add rule**:
+- Rule name: `expire-old-snapshots`
+- Prefix: `snapshots/`
+- Action: **Delete uploaded objects** after `365` days
+
+The prefix matters: it scopes expiry to the timestamped history only. The `latest.json` pointer object lives at the bucket root, outside this prefix, so it can never be expired out from under a restore.
 
 - [x] **Step 6: Record environment variables**
 
@@ -78,9 +85,10 @@ Create (untracked, git-ignored) env files:
 ```
 SUPABASE_URL=<project-url-from-step-1>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key-from-step-1>
-GITHUB_TOKEN=<pat-from-step-4>
-GITHUB_REPO=vollepeer/slagenhalen
-GITHUB_BACKUP_BRANCH=backups
+R2_ACCOUNT_ID=<account-id-from-step-4>
+R2_ACCESS_KEY_ID=<access-key-id-from-step-4>
+R2_SECRET_ACCESS_KEY=<secret-access-key-from-step-4>
+R2_BUCKET=kaartbuddy-backups
 ```
 
 `client/.env`:
@@ -2213,10 +2221,12 @@ git commit -m "Add Netlify Function entrypoint wiring the API router behind Supa
 ### Task 11: Backups, restore & data-management endpoints
 
 **Files:**
+- Modify: `netlify/package.json` (add the `aws4fetch` dependency)
 - Create: `netlify/lib/backup.ts`
 - Create: `netlify/lib/backup.test.ts`
 - Create: `netlify/lib/dataManagement.ts`
 - Create: `netlify/functions/backup-scheduled.ts`
+- Create: `netlify/scripts/backup-now.ts`
 - Create: `netlify/scripts/restore-from-snapshot.ts`
 - Create: `supabase/migrations/20260702130000_reset_identity_sequences_fn.sql`
 - Create: `docs/RESTORE_RUNBOOK.md`
@@ -2224,7 +2234,9 @@ git commit -m "Add Netlify Function entrypoint wiring the API router behind Supa
 
 **Interfaces:**
 - Consumes: `supabaseAdmin` (Task 3), the lock route added in Task 9.
-- Produces: `buildSnapshot`, `runBackupSnapshot`, `exportAllData`, `wipeAllData`, `importSnapshot` — consumed by the new `/api/data/*` routes here and by the client's Databeheer page in Task 14.
+- Produces: `BackupSnapshot`, `buildSnapshot`, `uploadSnapshotToR2`, `fetchLatestSnapshotFromR2`, `runBackupSnapshot`, `exportAllData`, `wipeAllData`, `importSnapshot` — consumed by the new `/api/data/*` routes here, the scripts in Steps 11–12, and the client's Databeheer page in Task 14.
+
+**Prerequisite:** Task 1, Steps 4–5 (R2 bucket, API token, lifecycle rule) must be done, and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` present in both `netlify/.env` and the root `.env` (see the Task 1, Step 6 note about `netlify dev`).
 
 - [ ] **Step 1: Add the identity-sequence-reset SQL function**
 
@@ -2256,19 +2268,50 @@ supabase db reset
 supabase db push
 ```
 
-- [ ] **Step 2: Write the failing test for the snapshot builder**
+- [ ] **Step 2: Add the `aws4fetch` dependency**
+
+R2 speaks the S3 API, which requires AWS SigV4-signed requests — plain `fetch` cannot talk to it. `aws4fetch` is a ~6 KB zero-dependency signer built on `fetch` and Web Crypto (both global in Node 18+, which Netlify Functions v2 runs).
+
+```bash
+cd netlify && npm install aws4fetch@^1.0.20
+```
+
+> **Why not `@aws-sdk/client-s3`:** it works too and is what Cloudflare's own R2 docs show, but it bundles ~2 MB into every function that imports it. `backup.ts` is imported by `api.ts` (the post-lock backup in Step 9), so that cost would land on the cold start of every ordinary API request during an event. `aws4fetch` keeps the hot path thin. If SigV4 signing ever needs debugging, swapping to the SDK is a contained change inside `backup.ts`.
+
+- [ ] **Step 3: Write the failing tests for the snapshot builder and the R2 upload**
 
 Create `netlify/lib/backup.test.ts`:
 
 ```ts
 import "dotenv/config";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { insertPlayer } from "./players";
-import { buildSnapshot } from "./backup";
+import { buildSnapshot, uploadSnapshotToR2, type BackupSnapshot } from "./backup";
 import { resetDatabase } from "./testHelpers";
+
+const emptySnapshot: BackupSnapshot = {
+  createdAt: "2026-08-29T02:00:00.000Z",
+  players: [],
+  seasons: [],
+  events: [],
+  eventParticipants: [],
+  auditLog: []
+};
+
+function stubR2Env(): void {
+  vi.stubEnv("R2_ACCOUNT_ID", "testaccount");
+  vi.stubEnv("R2_ACCESS_KEY_ID", "testkey");
+  vi.stubEnv("R2_SECRET_ACCESS_KEY", "testsecret");
+  vi.stubEnv("R2_BUCKET", "kaartbuddy-backups");
+}
 
 beforeEach(async () => {
   await resetDatabase();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 describe("buildSnapshot", () => {
@@ -2280,9 +2323,42 @@ describe("buildSnapshot", () => {
     expect(typeof snapshot.createdAt).toBe("string");
   });
 });
+
+describe("uploadSnapshotToR2", () => {
+  it("writes a timestamped snapshot and overwrites the latest.json pointer", async () => {
+    stubR2Env();
+    const paths: string[] = [];
+    vi.stubGlobal("fetch", async (input: Request | string) => {
+      paths.push(new URL(typeof input === "string" ? input : input.url).pathname);
+      return new Response("", { status: 200 });
+    });
+
+    const key = await uploadSnapshotToR2(emptySnapshot);
+
+    expect(key).toBe("snapshots/kaartbuddy-2026-08-29T02-00-00-000Z.json");
+    expect(paths).toEqual([
+      "/kaartbuddy-backups/snapshots/kaartbuddy-2026-08-29T02-00-00-000Z.json",
+      "/kaartbuddy-backups/latest.json"
+    ]);
+  });
+
+  it("throws when R2 rejects the upload", async () => {
+    stubR2Env();
+    vi.stubGlobal("fetch", async () => new Response("NoSuchBucket", { status: 404 }));
+    await expect(uploadSnapshotToR2(emptySnapshot)).rejects.toThrow(/mislukt \(404\)/);
+  });
+
+  it("throws a clear error when R2 credentials are missing", async () => {
+    vi.stubEnv("R2_ACCOUNT_ID", "");
+    vi.stubEnv("R2_ACCESS_KEY_ID", "");
+    vi.stubEnv("R2_SECRET_ACCESS_KEY", "");
+    vi.stubEnv("R2_BUCKET", "");
+    await expect(uploadSnapshotToR2(emptySnapshot)).rejects.toThrow(/moeten ingesteld zijn/);
+  });
+});
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [ ] **Step 4: Run to verify failure**
 
 ```bash
 cd netlify && npx vitest run lib/backup.test.ts
@@ -2290,9 +2366,10 @@ cd netlify && npx vitest run lib/backup.test.ts
 
 Expected: FAIL — `./backup` not found.
 
-- [ ] **Step 4: Create `netlify/lib/backup.ts`**
+- [ ] **Step 5: Create `netlify/lib/backup.ts`**
 
 ```ts
+import { AwsClient } from "aws4fetch";
 import { supabaseAdmin } from "./supabaseAdmin";
 
 export type BackupSnapshot = {
@@ -2303,6 +2380,8 @@ export type BackupSnapshot = {
   eventParticipants: unknown[];
   auditLog: unknown[];
 };
+
+const LATEST_KEY = "latest.json";
 
 async function fetchAll(table: string): Promise<unknown[]> {
   const { data, error } = await supabaseAdmin.from(table).select("*");
@@ -2321,49 +2400,79 @@ export async function buildSnapshot(): Promise<BackupSnapshot> {
   return { createdAt: new Date().toISOString(), players, seasons, events, eventParticipants, auditLog };
 }
 
-function backupFilePath(createdAt: string): string {
-  return `backups/kaartbuddy-${createdAt.replace(/[:.]/g, "-")}.json`;
+function snapshotKey(createdAt: string): string {
+  return `snapshots/kaartbuddy-${createdAt.replace(/[:.]/g, "-")}.json`;
 }
 
-export async function commitSnapshotToGitHub(snapshot: BackupSnapshot): Promise<string> {
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO;
-  const branch = process.env.GITHUB_BACKUP_BRANCH || "backups";
-  if (!token || !repo) throw new Error("GITHUB_TOKEN en GITHUB_REPO moeten ingesteld zijn.");
+type R2Target = { client: AwsClient; baseUrl: string };
 
-  const path = backupFilePath(snapshot.createdAt);
-  const content = Buffer.from(JSON.stringify(snapshot, null, 2), "utf8").toString("base64");
+function r2Target(): R2Target {
+  const accountId = process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  const bucket = process.env.R2_BUCKET;
 
-  const response = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ message: `Backup ${snapshot.createdAt}`, content, branch })
-  });
-
-  if (!response.ok) {
-    throw new Error(`GitHub backup mislukt (${response.status}): ${await response.text()}`);
+  if (!accountId || !accessKeyId || !secretAccessKey || !bucket) {
+    throw new Error(
+      "R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY en R2_BUCKET moeten ingesteld zijn."
+    );
   }
-  return path;
+
+  return {
+    // region "auto" is what R2 expects for SigV4; the bucket sits in the path (path-style addressing).
+    client: new AwsClient({ accessKeyId, secretAccessKey, service: "s3", region: "auto" }),
+    baseUrl: `https://${accountId}.r2.cloudflarestorage.com/${bucket}`
+  };
+}
+
+async function putObject(target: R2Target, key: string, body: string): Promise<void> {
+  const response = await target.client.fetch(`${target.baseUrl}/${key}`, {
+    method: "PUT",
+    body,
+    headers: { "Content-Type": "application/json" }
+  });
+  if (!response.ok) {
+    throw new Error(`R2-upload van ${key} mislukt (${response.status}): ${await response.text()}`);
+  }
+}
+
+export async function uploadSnapshotToR2(snapshot: BackupSnapshot): Promise<string> {
+  const target = r2Target();
+  const key = snapshotKey(snapshot.createdAt);
+  const body = JSON.stringify(snapshot, null, 2);
+
+  // Timestamped object first (the durable history), then the pointer — so `latest.json`
+  // never advertises a snapshot that failed to upload.
+  await putObject(target, key, body);
+  await putObject(target, LATEST_KEY, body);
+  return key;
+}
+
+export async function fetchLatestSnapshotFromR2(): Promise<BackupSnapshot> {
+  const target = r2Target();
+  const response = await target.client.fetch(`${target.baseUrl}/${LATEST_KEY}`);
+  if (!response.ok) {
+    throw new Error(
+      `Ophalen van ${LATEST_KEY} uit R2 mislukt (${response.status}): ${await response.text()}`
+    );
+  }
+  return (await response.json()) as BackupSnapshot;
 }
 
 export async function runBackupSnapshot(): Promise<string> {
-  return commitSnapshotToGitHub(await buildSnapshot());
+  return uploadSnapshotToR2(await buildSnapshot());
 }
 ```
 
-- [ ] **Step 5: Run to verify pass**
+- [ ] **Step 6: Run to verify pass**
 
 ```bash
 cd netlify && npx vitest run lib/backup.test.ts
 ```
 
-Expected: PASS (1 test — this test only exercises `buildSnapshot`, not the GitHub commit, so no `GITHUB_TOKEN` is needed for it).
+Expected: PASS (4 tests). The R2 tests stub `fetch`, so they never touch the real bucket and need no real credentials — the real round-trip is verified once, for real, in Step 11.
 
-- [ ] **Step 6: Create `netlify/lib/dataManagement.ts`**
+- [ ] **Step 7: Create `netlify/lib/dataManagement.ts`**
 
 ```ts
 import { supabaseAdmin } from "./supabaseAdmin";
@@ -2403,7 +2512,7 @@ export async function importSnapshot(snapshot: BackupSnapshot): Promise<void> {
 }
 ```
 
-- [ ] **Step 7: Add `/api/data/*` routes to `netlify/lib/router.ts`**
+- [ ] **Step 8: Add `/api/data/*` routes to `netlify/lib/router.ts`**
 
 Add this import at the top:
 
@@ -2443,11 +2552,11 @@ Insert these route blocks in `dispatch()`, above the final `throw new ApiError(4
   }
 
   if (method === "POST" && pathname === "/api/data/backup-now") {
-    return { status: 200, body: { path: await runBackupSnapshot() } };
+    return { status: 200, body: { key: await runBackupSnapshot() } };
   }
 ```
 
-- [ ] **Step 8: Add a background backup after locking**
+- [ ] **Step 9: Add a background backup after locking**
 
 In the `/api/events/:id/lock` block added in Task 9, replace:
 
@@ -2468,9 +2577,9 @@ with:
     return { status: 200, body: { ok: true } };
 ```
 
-(A GitHub outage must not block the operator from locking an event — the daily scheduled backup remains a safety net.)
+(An R2 outage or an expired API token must not block the operator from locking an event — the daily scheduled backup remains a safety net. The failure is logged to the Netlify function log, not surfaced to the operator mid-event.)
 
-- [ ] **Step 9: Create the scheduled backup function**
+- [ ] **Step 10: Create the scheduled backup function**
 
 Create `netlify/functions/backup-scheduled.ts`:
 
@@ -2486,24 +2595,17 @@ export default async (): Promise<Response> => {
 };
 ```
 
-- [ ] **Step 10: Create the restore script**
+- [ ] **Step 11: Create the manual backup script and smoke-test the real R2 round-trip**
 
-Create `netlify/scripts/restore-from-snapshot.ts`:
+Create `netlify/scripts/backup-now.ts`:
 
 ```ts
-import { readFileSync } from "node:fs";
-import { importSnapshot } from "../lib/dataManagement";
-import type { BackupSnapshot } from "../lib/backup";
+import "dotenv/config";
+import { runBackupSnapshot } from "../lib/backup";
 
 async function main() {
-  const filePath = process.argv[2];
-  if (!filePath) {
-    console.error("Gebruik: npx tsx scripts/restore-from-snapshot.ts <pad-naar-snapshot.json>");
-    process.exit(1);
-  }
-  const snapshot = JSON.parse(readFileSync(filePath, "utf8")) as BackupSnapshot;
-  await importSnapshot(snapshot);
-  console.log(`Herstel voltooid vanuit ${filePath}.`);
+  const key = await runBackupSnapshot();
+  console.log(`Back-up opgeslagen in R2 als ${key} (en als latest.json).`);
 }
 
 main().catch((error) => {
@@ -2512,34 +2614,117 @@ main().catch((error) => {
 });
 ```
 
-- [ ] **Step 11: Create `docs/RESTORE_RUNBOOK.md`**
+Run it against the real bucket (`dotenv/config` reads `netlify/.env`, so run it from `netlify/`):
+
+```bash
+cd netlify && npx tsx scripts/backup-now.ts
+```
+
+Expected: prints `Back-up opgeslagen in R2 als snapshots/kaartbuddy-<timestamp>.json (en als latest.json).`
+
+Then confirm in the Cloudflare dashboard (R2 → `kaartbuddy-backups`) that both objects exist. This is the first time real credentials are exercised — if SigV4 signing or the token scope is wrong, it fails here rather than silently at 02:00 in production.
+
+Common failures: `403 SignatureDoesNotMatch` usually means the secret was copied with whitespace or the *token value* was pasted instead of the *secret access key*; `403 AccessDenied` means the token was scoped to the wrong bucket or created read-only.
+
+- [ ] **Step 12: Create the restore script**
+
+Create `netlify/scripts/restore-from-snapshot.ts`. It takes either `--from-r2` (pull `latest.json` straight from the bucket) or a path to a locally downloaded snapshot:
+
+```ts
+import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { importSnapshot } from "../lib/dataManagement";
+import { fetchLatestSnapshotFromR2, type BackupSnapshot } from "../lib/backup";
+
+async function main() {
+  const argument = process.argv[2];
+  if (!argument) {
+    console.error(
+      "Gebruik: npx tsx scripts/restore-from-snapshot.ts --from-r2 | <pad-naar-snapshot.json>"
+    );
+    process.exit(1);
+  }
+
+  let snapshot: BackupSnapshot;
+  let source: string;
+  if (argument === "--from-r2") {
+    snapshot = await fetchLatestSnapshotFromR2();
+    source = `R2 latest.json (gemaakt op ${snapshot.createdAt})`;
+  } else {
+    snapshot = JSON.parse(readFileSync(argument, "utf8")) as BackupSnapshot;
+    source = argument;
+  }
+
+  await importSnapshot(snapshot);
+  console.log(`Herstel voltooid vanuit ${source}.`);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+```
+
+Note that `importSnapshot` wipes the target database before inserting — that is intentional (a restore replaces state, it does not merge), but it means pointing this at the wrong `SUPABASE_URL` destroys live data. The runbook in the next step calls that out.
+
+- [ ] **Step 13: Create `docs/RESTORE_RUNBOOK.md`**
 
 ```markdown
 # Restore runbook
 
-1. Find the most recent snapshot in the `backups/` folder on the `backups` branch of `vollepeer/slagenhalen`.
-2. Download the file locally.
-3. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (in `netlify/.env` or your shell) to the target Supabase project — the existing one, or a freshly created replacement if the original is unrecoverable.
-4. If restoring into a brand-new Supabase project: run the schema migrations first (`supabase db push`), and re-create the named user accounts in Supabase Auth (they are not part of the data snapshot).
-5. Run:
+Backups live in the Cloudflare R2 bucket `kaartbuddy-backups`:
+- `latest.json` — always the most recent snapshot, overwritten on every backup run.
+- `snapshots/kaartbuddy-<timestamp>.json` — the timestamped history, kept 365 days.
+
+**Warning:** restoring wipes the target database before inserting. Double-check which
+Supabase project `SUPABASE_URL` points at before running anything below.
+
+1. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (in `netlify/.env` or your shell) to the
+   target Supabase project — the existing one, or a freshly created replacement if the original
+   is unrecoverable. Make sure `R2_*` is set too if you are restoring from R2 directly.
+2. If restoring into a brand-new Supabase project: run the schema migrations first
+   (`supabase db push`), and re-create the named user accounts in Supabase Auth — they live in
+   `auth.users` and are **not** part of the data snapshot.
+3. Restore the most recent backup:
    ```
    cd netlify
-   npx tsx scripts/restore-from-snapshot.ts /path/to/kaartbuddy-<timestamp>.json
+   npx tsx scripts/restore-from-snapshot.ts --from-r2
    ```
-6. Verify: open the app, confirm players/seasons/events match the snapshot's timestamp.
+   To restore an older point in time instead, download the snapshot you want from the R2
+   dashboard (bucket → `snapshots/` → object → Download) and pass its path:
+   ```
+   npx tsx scripts/restore-from-snapshot.ts ~/Downloads/kaartbuddy-2026-08-29T02-00-00-000Z.json
+   ```
+4. Verify: open the app, confirm players/seasons/events match the snapshot's timestamp.
+
+## If the R2 credentials are lost
+
+Create a new Object Read & Write API token scoped to `kaartbuddy-backups` (Cloudflare dashboard →
+R2 → Manage R2 API Tokens) and update `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` in both
+`netlify/.env` and the Netlify site's environment variables. Existing backup objects are
+unaffected — tokens are credentials, not owners of the data.
 ```
 
-- [ ] **Step 12: Exercise the restore path once, end to end, against a scratch Supabase project**
+- [ ] **Step 14: Exercise the restore path once, end to end, against a scratch Supabase project**
 
-Create a second, throwaway Supabase project via the dashboard, run `supabase db push` against it (temporarily re-linking, or use `supabase link` with a `--project-ref` override), then run the restore script from Step 10 against a real snapshot downloaded from the `backups` branch. Confirm the data appears via `supabase db execute --sql "select count(*) from players;"`. Delete the scratch project afterward.
-
-- [ ] **Step 13: Commit**
+Create a second, throwaway Supabase project via the dashboard, run `supabase db push` against it (temporarily re-linking, or use `supabase link` with a `--project-ref` override), then — with `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` pointed at the scratch project — run:
 
 ```bash
-git add netlify/lib/backup.ts netlify/lib/backup.test.ts netlify/lib/dataManagement.ts \
-  netlify/lib/router.ts netlify/functions/backup-scheduled.ts netlify/scripts/restore-from-snapshot.ts \
+cd netlify && npx tsx scripts/restore-from-snapshot.ts --from-r2
+```
+
+This restores the snapshot uploaded in Step 11. Confirm the data landed via `supabase db execute --sql "select count(*) from players;"`, then re-point the env vars back at the real project and delete the scratch project.
+
+Doing this once now is the whole point of the exercise: an untested restore path is not a backup.
+
+- [ ] **Step 15: Commit**
+
+```bash
+git add netlify/package.json netlify/package-lock.json netlify/lib/backup.ts netlify/lib/backup.test.ts \
+  netlify/lib/dataManagement.ts netlify/lib/router.ts netlify/functions/backup-scheduled.ts \
+  netlify/scripts/backup-now.ts netlify/scripts/restore-from-snapshot.ts \
   supabase/migrations/20260702130000_reset_identity_sequences_fn.sql docs/RESTORE_RUNBOOK.md
-git commit -m "Add backups, restore tooling, and data-management API endpoints"
+git commit -m "Add Cloudflare R2 backups, restore tooling, and data-management API endpoints"
 ```
 
 ---
@@ -3143,7 +3328,7 @@ export function DataPage() {
   const handleBackupNow = async () => {
     try {
       await apiSend("/api/data/backup-now", "POST");
-      setSuccess("Back-up gemaakt en opgeslagen in GitHub.");
+      setSuccess("Back-up gemaakt en opgeslagen in de cloudopslag.");
       setError(null);
     } catch {
       setError("Back-up maken mislukt.");
@@ -3274,7 +3459,7 @@ Expected: PASS — no TypeScript errors.
 netlify dev
 ```
 
-Log in, go to "Databeheer", click "Exporteer back-up" (downloads a JSON file with empty arrays if no data yet), add a couple of players and a season elsewhere in the app, export again (confirm they appear), then click "Download back-up nu" and confirm a new commit lands in the `backups` branch of the GitHub repo.
+Log in, go to "Databeheer", click "Exporteer back-up" (downloads a JSON file with empty arrays if no data yet), add a couple of players and a season elsewhere in the app, export again (confirm they appear), then click "Download back-up nu" and confirm a new object lands under `snapshots/` in the `kaartbuddy-backups` R2 bucket.
 
 - [ ] **Step 4: Commit**
 
@@ -3397,7 +3582,7 @@ git commit -m "Remove dead offline server/localStorage code, update README for t
 netlify deploy --build
 ```
 
-Set the same environment variables from Task 1, Step 6 (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GITHUB_TOKEN`, `GITHUB_REPO`, `GITHUB_BACKUP_BRANCH`) in the Netlify site's dashboard under Site settings → Environment variables, and `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` as build-time variables.
+Set the same environment variables from Task 1, Step 6 (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`) in the Netlify site's dashboard under Site settings → Environment variables, and `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` as build-time variables.
 
 - [ ] **Step 2: Full manual walkthrough on the preview URL**
 
@@ -3405,11 +3590,11 @@ Log in, create a season, create an event, add participants, enter scores across 
 
 - [ ] **Step 3: Verify the daily scheduled backup fires**
 
-In the Netlify dashboard, manually trigger the `backup-scheduled` function once (Functions tab → invoke), then confirm a new file appears under `backups/` on the `backups` branch in GitHub.
+In the Netlify dashboard, manually trigger the `backup-scheduled` function once (Functions tab → invoke), then confirm a new object appears under `snapshots/` in the `kaartbuddy-backups` R2 bucket and that `latest.json`'s modified timestamp has moved.
 
 - [ ] **Step 4: Confirm the lock-triggered backup fires**
 
-Lock another test event and confirm a second backup commit appears within a few seconds.
+Lock another test event and confirm a second `snapshots/` object appears within a few seconds. If it does not, check the function log for `Achtergrond-backup na vergrendelen is mislukt` — locking deliberately succeeds even when the backup fails, so this failure is silent in the UI by design.
 
 - [ ] **Step 5: Re-run the restore dry run against the real (non-scratch) Supabase project's data**
 
