@@ -9,8 +9,8 @@ export default async (req: Request, _context: Context): Promise<Response> => {
   const token = authHeader.replace(/^Bearer\s+/i, "");
   if (!token) return jsonResponse(401, { message: "Niet ingelogd." });
 
-  const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !userData.user) return jsonResponse(401, { message: "Niet ingelogd." });
+  const { data: claimsData, error: claimsError } = await supabaseAdmin.auth.getClaims(token);
+  if (claimsError || !claimsData?.claims) return jsonResponse(401, { message: "Niet ingelogd." });
 
   let body: unknown;
   if (req.method !== "GET" && req.method !== "DELETE") {
@@ -23,8 +23,8 @@ export default async (req: Request, _context: Context): Promise<Response> => {
 
   const url = new URL(req.url);
   const result = await handleApiRequest(req.method, url.pathname, url.searchParams, body, {
-    userId: userData.user.id,
-    userEmail: userData.user.email ?? ""
+    userId: claimsData.claims.sub,
+    userEmail: claimsData.claims.email ?? ""
   });
 
   return jsonResponse(result.status, result.body);

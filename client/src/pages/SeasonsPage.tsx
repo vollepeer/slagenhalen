@@ -48,14 +48,22 @@ export function SeasonsPage() {
   }, [includeArchived]);
 
   const addSeason = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       setError("Vul een seizoensnaam in.");
       return;
     }
     try {
-      await apiSend("/api/seasons", "POST", { name });
+      const created = await apiSend<{ id: number }>("/api/seasons", "POST", { name });
       setName("");
-      await loadSeasons();
+      setError(null);
+      // Insert locally instead of re-fetching the whole list — a new season always defaults
+      // to topScoresCount 7 / no dates / not archived, and always belongs at the top (newest-first).
+      setSeasons((current) => [
+        { id: created.id, name: trimmedName, topScoresCount: 7, startDate: null, endDate: null, isArchived: false },
+        ...current
+      ]);
+      setScoreCountBySeason((current) => ({ ...current, [created.id]: "7" }));
     } catch (err) {
       setError("Seizoen toevoegen mislukt.");
     }

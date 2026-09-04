@@ -46,9 +46,19 @@ export function PlayersPage() {
       return;
     }
     try {
-      await apiSend("/api/players", "POST", { name });
+      const created = await apiSend<{ id: number; name: string }>("/api/players", "POST", { name });
       setName("");
-      await loadPlayers();
+      setError(null);
+      // Insert locally instead of re-fetching the whole list — the response already has
+      // everything needed, and a new player is never archived so it always belongs in view.
+      const normalizedQuery = query.trim().toLowerCase();
+      if (!normalizedQuery || created.name.toLowerCase().includes(normalizedQuery)) {
+        setPlayers((current) =>
+          [...current, { id: created.id, name: created.name, isArchived: false }].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          )
+        );
+      }
     } catch (err) {
       setError("Toevoegen mislukt. Controleer of de naam uniek is.");
     }

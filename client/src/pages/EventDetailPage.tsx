@@ -24,6 +24,9 @@ import { apiGet, apiSend } from "../api";
 import { EventDetail, EventParticipant, Player } from "../types";
 import { formatEventDate } from "../utils/date";
 import { formatPlayerId } from "../utils/playerId";
+import { createKeyedDebouncer } from "../utils/keyedDebouncer";
+
+const SCORE_SAVE_DEBOUNCE_MS = 500;
 
 type SortDirection = "asc" | "desc";
 type SortKey =
@@ -50,6 +53,12 @@ export function EventDetailPage() {
   const inputRefs = useRef<
     Record<number, Partial<Record<"pointsR1" | "pointsR2" | "pointsR3", HTMLInputElement | null>>>
   >({});
+  const scoreSaveDebouncer = useRef(createKeyedDebouncer<[EventParticipant, "pointsR1" | "pointsR2" | "pointsR3", number | null]>(SCORE_SAVE_DEBOUNCE_MS));
+
+  useEffect(() => {
+    const debouncer = scoreSaveDebouncer.current;
+    return () => debouncer.cancelAll();
+  }, []);
   const [prizeRanks, setPrizeRanks] = useState<[string, string, string]>([
     "1",
     "18",
@@ -289,14 +298,11 @@ export function EventDetailPage() {
     return participant?.totalPoints ?? null;
   };
 
-  const updateScore = async (
+  const saveScore = async (
     participant: EventParticipant,
     field: "pointsR1" | "pointsR2" | "pointsR3",
-    value: string
+    payloadValue: number | null
   ) => {
-    const payloadValue = value === "" ? null : Number(value);
-    if (value !== "" && Number.isNaN(payloadValue)) return;
-
     try {
       await apiSend(
         `/api/events/${eventId}/participants/${participant.id}`,
@@ -307,6 +313,35 @@ export function EventDetailPage() {
     } catch (err) {
       setError("Punten opslaan mislukt.");
     }
+  };
+
+  const updateScore = (
+    participant: EventParticipant,
+    field: "pointsR1" | "pointsR2" | "pointsR3",
+    value: string
+  ) => {
+    const payloadValue = value === "" ? null : Number(value);
+    if (value !== "" && Number.isNaN(payloadValue)) return;
+
+    // Update the screen immediately so the typed digit shows without waiting on the network;
+    // the actual save is debounced below so it fires once the user pauses, not on every keystroke.
+    setEvent((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        participants: current.participants.map((p) =>
+          p.id === participant.id ? { ...p, [field]: payloadValue } : p
+        )
+      };
+    });
+
+    scoreSaveDebouncer.current.schedule(
+      `${participant.id}:${field}`,
+      saveScore,
+      participant,
+      field,
+      payloadValue
+    );
   };
 
   const removeParticipant = async (participant: EventParticipant) => {
