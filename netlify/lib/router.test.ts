@@ -115,3 +115,42 @@ describe("season ranking endpoint", () => {
     expect((ranking.body as { available: boolean }).available).toBe(false);
   });
 });
+
+describe("data management endpoints", () => {
+  it("exports all data via GET /api/data/export", async () => {
+    await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Jan" }, ctx);
+
+    const result = await handleApiRequest("GET", "/api/data/export", new URLSearchParams(), undefined, ctx);
+    expect(result.status).toBe(200);
+    expect((result.body as { players: unknown[] }).players).toHaveLength(1);
+  });
+
+  it("wipes all data via POST /api/data/wipe", async () => {
+    await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Jan" }, ctx);
+
+    const wipeResult = await handleApiRequest("POST", "/api/data/wipe", new URLSearchParams(), undefined, ctx);
+    expect(wipeResult.status).toBe(200);
+
+    const players = await handleApiRequest("GET", "/api/players", new URLSearchParams(), undefined, ctx);
+    expect(players.body).toEqual([]);
+  });
+
+  it("rejects a malformed import payload with 400", async () => {
+    const result = await handleApiRequest("POST", "/api/data/import", new URLSearchParams(), { players: [] }, ctx);
+    expect(result.status).toBe(400);
+  });
+
+  it("imports a valid snapshot via POST /api/data/import", async () => {
+    await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Jan" }, ctx);
+    const exported = await handleApiRequest("GET", "/api/data/export", new URLSearchParams(), undefined, ctx);
+
+    await handleApiRequest("POST", "/api/data/wipe", new URLSearchParams(), undefined, ctx);
+
+    const importResult = await handleApiRequest("POST", "/api/data/import", new URLSearchParams(), exported.body, ctx);
+    expect(importResult.status).toBe(200);
+
+    const players = await handleApiRequest("GET", "/api/players", new URLSearchParams(), undefined, ctx);
+    expect(players.body as unknown[]).toHaveLength(1);
+    expect((players.body as { name: string }[])[0].name).toBe("Jan");
+  });
+});
