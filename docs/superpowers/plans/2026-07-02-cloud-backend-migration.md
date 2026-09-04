@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-09-05):** Tasks 1–10 are done. Task 11 was split: the data-management endpoints
+> (export/import/wipe) stay in scope now, but the Cloudflare R2 off-platform backup/restore half
+> moved to **Task 11b**, which is **postponed** until the app is fully running in production
+> (Tasks 12–16 done). Task 16's backup-verification steps (3–5) are likewise deferred to when
+> Task 11b ships.
+
 **Goal:** Replace KaartBuddy's browser-localStorage data layer with Supabase (Postgres + Auth) behind Netlify Functions, keeping the existing MUI UI, and add automated off-platform backups to Cloudflare R2 — without changing any business rule in `docs/specs.md`.
 
 **Architecture:** A single Netlify Function (`netlify/functions/api.ts`, path `/api/*`) holds all business logic (ranking, lock validation, uniqueness checks) ported from the dead `server/src/` code and the maintained `client/src/localApi.ts`, talking to Supabase Postgres via the service-role key. The client keeps its current MUI pages, swaps `client/src/api.ts` from localStorage to real `fetch` calls, adds a Supabase Auth login screen, and adds a localStorage-backed retry queue for transient network drops. A second scheduled Netlify Function uploads daily (and post-lock) JSON snapshots to a Cloudflare R2 bucket over R2's S3-compatible API.
@@ -2218,25 +2224,24 @@ git commit -m "Add Netlify Function entrypoint wiring the API router behind Supa
 
 ---
 
-### Task 11: Backups, restore & data-management endpoints
+### Task 11: Data-management endpoints (export/import/wipe)
+
+> **Scope note (2026-09-05):** this task originally also carried the Cloudflare R2 off-platform
+> backup/restore pipeline. That half is **postponed** — split out to [Task 11b](#task-11b-off-platform-backups-cloudflare-r2-postponed)
+> below — so we can get the app fully running in production on Netlify + Supabase first. The
+> export/import/wipe endpoints here are core Databeheer functionality (Task 14 depends on them),
+> not backup infrastructure, so they stay in scope now.
 
 **Files:**
-- Modify: `netlify/package.json` (add the `aws4fetch` dependency)
-- Create: `netlify/lib/backup.ts`
+- Create: `netlify/lib/backup.ts` (snapshot builder only — no R2 code in this task)
 - Create: `netlify/lib/backup.test.ts`
 - Create: `netlify/lib/dataManagement.ts`
-- Create: `netlify/functions/backup-scheduled.ts`
-- Create: `netlify/scripts/backup-now.ts`
-- Create: `netlify/scripts/restore-from-snapshot.ts`
 - Create: `supabase/migrations/20260702130000_reset_identity_sequences_fn.sql`
-- Create: `docs/RESTORE_RUNBOOK.md`
-- Modify: `netlify/lib/router.ts` (add `/api/data/*` routes; add a background backup call after locking)
+- Modify: `netlify/lib/router.ts` (add `/api/data/export`, `/api/data/import`, `/api/data/wipe` routes)
 
 **Interfaces:**
-- Consumes: `supabaseAdmin` (Task 3), the lock route added in Task 9.
-- Produces: `BackupSnapshot`, `buildSnapshot`, `uploadSnapshotToR2`, `fetchLatestSnapshotFromR2`, `runBackupSnapshot`, `exportAllData`, `wipeAllData`, `importSnapshot` — consumed by the new `/api/data/*` routes here, the scripts in Steps 11–12, and the client's Databeheer page in Task 14.
-
-**Prerequisite:** Task 1, Steps 4–5 (R2 bucket, API token, lifecycle rule) must be done, and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` present in both `netlify/.env` and the root `.env` (see the Task 1, Step 6 note about `netlify dev`).
+- Consumes: `supabaseAdmin` (Task 3).
+- Produces: `BackupSnapshot`, `buildSnapshot`, `exportAllData`, `wipeAllData`, `importSnapshot` — consumed by the new `/api/data/*` routes here and the client's Databeheer page in Task 14. `buildSnapshot`'s output shape is also what Task 11b's R2 upload will later serialize, so keep it as the source of truth for "everything in the database."
 
 - [ ] **Step 1: Add the identity-sequence-reset SQL function**
 
@@ -2268,7 +2273,198 @@ supabase db reset
 supabase db push
 ```
 
-- [ ] **Step 2: Add the `aws4fetch` dependency**
+- [ ] **Step 2: Write the failing tests for the snapshot builder**
+
+Create `netlify/lib/backup.test.ts`:
+
+```ts
+import "dotenv/config";
+import { beforeEach, describe, expect, it } from "vitest";
+import { insertPlayer } from "./players";
+import { buildSnapshot } from "./backup";
+import { resetDatabase } from "./testHelpers";
+
+beforeEach(async () => {
+  await resetDatabase();
+});
+
+describe("buildSnapshot", () => {
+  it("includes every table and a timestamp", async () => {
+    await insertPlayer("Jan Jansen");
+    const snapshot = await buildSnapshot();
+    expect(snapshot.players).toHaveLength(1);
+    expect(snapshot.seasons).toEqual([]);
+    expect(typeof snapshot.createdAt).toBe("string");
+  });
+});
+```
+
+- [ ] **Step 3: Run to verify failure**
+
+```bash
+cd netlify && npx vitest run lib/backup.test.ts
+```
+
+Expected: FAIL — `./backup` not found.
+
+- [ ] **Step 4: Create `netlify/lib/backup.ts`**
+
+```ts
+import { supabaseAdmin } from "./supabaseAdmin";
+
+export type BackupSnapshot = {
+  createdAt: string;
+  players: unknown[];
+  seasons: unknown[];
+  events: unknown[];
+  eventParticipants: unknown[];
+  auditLog: unknown[];
+};
+
+async function fetchAll(table: string): Promise<unknown[]> {
+  const { data, error } = await supabaseAdmin.from(table).select("*");
+  if (error) throw new Error(`Kon tabel ${table} niet lezen: ${error.message}`);
+  return data ?? [];
+}
+
+export async function buildSnapshot(): Promise<BackupSnapshot> {
+  const [players, seasons, events, eventParticipants, auditLog] = await Promise.all([
+    fetchAll("players"),
+    fetchAll("seasons"),
+    fetchAll("events"),
+    fetchAll("event_participants"),
+    fetchAll("audit_log")
+  ]);
+  return { createdAt: new Date().toISOString(), players, seasons, events, eventParticipants, auditLog };
+}
+```
+
+> **Note (Task 11b will extend this file):** the R2 upload/download functions (`uploadSnapshotToR2`, `fetchLatestSnapshotFromR2`, `runBackupSnapshot`) that the original single-task design put here are deferred to Task 11b, along with the `aws4fetch` dependency they need. Keep `backup.ts` additive when that task starts — don't restructure `buildSnapshot` away from this shape, since `dataManagement.ts` below already depends on it.
+
+- [ ] **Step 5: Run to verify pass**
+
+```bash
+cd netlify && npx vitest run lib/backup.test.ts
+```
+
+Expected: PASS (1 test).
+
+- [ ] **Step 6: Create `netlify/lib/dataManagement.ts`**
+
+```ts
+import { supabaseAdmin } from "./supabaseAdmin";
+import type { BackupSnapshot } from "./backup";
+import { buildSnapshot } from "./backup";
+
+export async function exportAllData(): Promise<BackupSnapshot> {
+  return buildSnapshot();
+}
+
+export async function wipeAllData(): Promise<void> {
+  await supabaseAdmin.from("audit_log").delete().neq("id", 0);
+  await supabaseAdmin.from("event_participants").delete().neq("id", 0);
+  await supabaseAdmin.from("events").delete().neq("id", 0);
+  await supabaseAdmin.from("seasons").delete().neq("id", 0);
+  await supabaseAdmin.from("players").delete().neq("id", 0);
+}
+
+export async function importSnapshot(snapshot: BackupSnapshot): Promise<void> {
+  await wipeAllData();
+
+  const inserts: Array<[string, unknown[]]> = [
+    ["players", snapshot.players],
+    ["seasons", snapshot.seasons],
+    ["events", snapshot.events],
+    ["event_participants", snapshot.eventParticipants],
+    ["audit_log", snapshot.auditLog]
+  ];
+  for (const [table, rows] of inserts) {
+    if (rows.length === 0) continue;
+    const { error } = await supabaseAdmin.from(table).insert(rows);
+    if (error) throw new Error(`Import van ${table} mislukt: ${error.message}`);
+  }
+
+  const { error: sequenceError } = await supabaseAdmin.rpc("reset_identity_sequences");
+  if (sequenceError) throw new Error(`Sequenties resetten mislukt: ${sequenceError.message}`);
+}
+```
+
+- [ ] **Step 7: Add `/api/data/*` routes to `netlify/lib/router.ts`**
+
+Add this import at the top:
+
+```ts
+import { exportAllData, importSnapshot, wipeAllData } from "./dataManagement";
+import type { BackupSnapshot } from "./backup";
+```
+
+Insert these route blocks in `dispatch()`, above the final `throw new ApiError(404, "Niet gevonden.");`:
+
+```ts
+  if (method === "GET" && pathname === "/api/data/export") {
+    return { status: 200, body: await exportAllData() };
+  }
+
+  if (method === "POST" && pathname === "/api/data/import") {
+    const payload = body as Partial<BackupSnapshot>;
+    if (
+      !payload ||
+      !Array.isArray(payload.players) ||
+      !Array.isArray(payload.seasons) ||
+      !Array.isArray(payload.events) ||
+      !Array.isArray(payload.eventParticipants) ||
+      !Array.isArray(payload.auditLog)
+    ) {
+      throw new ApiError(400, "Ongeldig back-upbestand.");
+    }
+    await importSnapshot(payload as BackupSnapshot);
+    await insertAuditLog({ entityType: "data", entityId: 0, action: "IMPORTED", userId: ctx.userId, userEmail: ctx.userEmail });
+    return { status: 200, body: { ok: true } };
+  }
+
+  if (method === "POST" && pathname === "/api/data/wipe") {
+    await wipeAllData();
+    await insertAuditLog({ entityType: "data", entityId: 0, action: "WIPED", userId: ctx.userId, userEmail: ctx.userEmail });
+    return { status: 200, body: { ok: true } };
+  }
+```
+
+> Note: no `/api/data/backup-now` route yet — that's added in Task 11b once `runBackupSnapshot` exists.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add netlify/lib/backup.ts netlify/lib/backup.test.ts netlify/lib/dataManagement.ts netlify/lib/router.ts \
+  supabase/migrations/20260702130000_reset_identity_sequences_fn.sql
+git commit -m "Add data-management export/import/wipe endpoints"
+```
+
+---
+
+### Task 11b: Off-platform backups (Cloudflare R2) — POSTPONED
+
+> **Status (2026-09-05):** postponed until after Tasks 12–16 ship the app to production. Come
+> back to this once auth, the client sync/retry queue, Databeheer, cleanup, and rollout are done.
+> This section preserves the original Task 11 content for the backup/restore half so no design
+> work is lost.
+
+**Files:**
+- Modify: `netlify/package.json` (add the `aws4fetch` dependency)
+- Modify: `netlify/lib/backup.ts` (add `uploadSnapshotToR2`, `fetchLatestSnapshotFromR2`, `runBackupSnapshot`)
+- Modify: `netlify/lib/backup.test.ts` (add the R2 upload tests)
+- Create: `netlify/functions/backup-scheduled.ts`
+- Create: `netlify/scripts/backup-now.ts`
+- Create: `netlify/scripts/restore-from-snapshot.ts`
+- Create: `docs/RESTORE_RUNBOOK.md`
+- Modify: `netlify/lib/router.ts` (add `/api/data/backup-now`; add a background backup call after locking)
+
+**Interfaces:**
+- Consumes: `buildSnapshot`/`BackupSnapshot` (Task 11), the lock route added in Task 9.
+- Produces: `uploadSnapshotToR2`, `fetchLatestSnapshotFromR2`, `runBackupSnapshot` — consumed by the scripts here and the `/api/data/backup-now` route.
+
+**Prerequisite:** Task 1, Steps 4–5 (R2 bucket, API token, lifecycle rule) must be done, and `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` present in both `netlify/.env` and the root `.env` (see the Task 1, Step 6 note about `netlify dev`).
+
+- [ ] **Step 1: Add the `aws4fetch` dependency**
 
 R2 speaks the S3 API, which requires AWS SigV4-signed requests — plain `fetch` cannot talk to it. `aws4fetch` is a ~6 KB zero-dependency signer built on `fetch` and Web Crypto (both global in Node 18+, which Netlify Functions v2 runs).
 
@@ -2276,11 +2472,11 @@ R2 speaks the S3 API, which requires AWS SigV4-signed requests — plain `fetch`
 cd netlify && npm install aws4fetch@^1.0.20
 ```
 
-> **Why not `@aws-sdk/client-s3`:** it works too and is what Cloudflare's own R2 docs show, but it bundles ~2 MB into every function that imports it. `backup.ts` is imported by `api.ts` (the post-lock backup in Step 9), so that cost would land on the cold start of every ordinary API request during an event. `aws4fetch` keeps the hot path thin. If SigV4 signing ever needs debugging, swapping to the SDK is a contained change inside `backup.ts`.
+> **Why not `@aws-sdk/client-s3`:** it works too and is what Cloudflare's own R2 docs show, but it bundles ~2 MB into every function that imports it. `backup.ts` is imported by `api.ts` (the post-lock backup in Step 6), so that cost would land on the cold start of every ordinary API request during an event. `aws4fetch` keeps the hot path thin. If SigV4 signing ever needs debugging, swapping to the SDK is a contained change inside `backup.ts`.
 
-- [ ] **Step 3: Write the failing tests for the snapshot builder and the R2 upload**
+- [ ] **Step 2: Write the failing tests for the R2 upload**
 
-Create `netlify/lib/backup.test.ts`:
+Add to `netlify/lib/backup.test.ts`:
 
 ```ts
 import "dotenv/config";
@@ -2312,16 +2508,6 @@ beforeEach(async () => {
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
-});
-
-describe("buildSnapshot", () => {
-  it("includes every table and a timestamp", async () => {
-    await insertPlayer("Jan Jansen");
-    const snapshot = await buildSnapshot();
-    expect(snapshot.players).toHaveLength(1);
-    expect(snapshot.seasons).toEqual([]);
-    expect(typeof snapshot.createdAt).toBe("string");
-  });
 });
 
 describe("uploadSnapshotToR2", () => {
@@ -2358,47 +2544,24 @@ describe("uploadSnapshotToR2", () => {
 });
 ```
 
-- [ ] **Step 4: Run to verify failure**
+- [ ] **Step 3: Run to verify failure**
 
 ```bash
 cd netlify && npx vitest run lib/backup.test.ts
 ```
 
-Expected: FAIL — `./backup` not found.
+Expected: FAIL — `uploadSnapshotToR2` not exported.
 
-- [ ] **Step 5: Create `netlify/lib/backup.ts`**
+- [ ] **Step 4: Extend `netlify/lib/backup.ts` with the R2 functions**
 
 ```ts
 import { AwsClient } from "aws4fetch";
-import { supabaseAdmin } from "./supabaseAdmin";
+```
 
-export type BackupSnapshot = {
-  createdAt: string;
-  players: unknown[];
-  seasons: unknown[];
-  events: unknown[];
-  eventParticipants: unknown[];
-  auditLog: unknown[];
-};
+Add alongside the existing `buildSnapshot`:
 
+```ts
 const LATEST_KEY = "latest.json";
-
-async function fetchAll(table: string): Promise<unknown[]> {
-  const { data, error } = await supabaseAdmin.from(table).select("*");
-  if (error) throw new Error(`Kon tabel ${table} niet lezen: ${error.message}`);
-  return data ?? [];
-}
-
-export async function buildSnapshot(): Promise<BackupSnapshot> {
-  const [players, seasons, events, eventParticipants, auditLog] = await Promise.all([
-    fetchAll("players"),
-    fetchAll("seasons"),
-    fetchAll("events"),
-    fetchAll("event_participants"),
-    fetchAll("audit_log")
-  ]);
-  return { createdAt: new Date().toISOString(), players, seasons, events, eventParticipants, auditLog };
-}
 
 function snapshotKey(createdAt: string): string {
   return `snapshots/kaartbuddy-${createdAt.replace(/[:.]/g, "-")}.json`;
@@ -2464,99 +2627,15 @@ export async function runBackupSnapshot(): Promise<string> {
 }
 ```
 
-- [ ] **Step 6: Run to verify pass**
+- [ ] **Step 5: Run to verify pass**
 
 ```bash
 cd netlify && npx vitest run lib/backup.test.ts
 ```
 
-Expected: PASS (4 tests). The R2 tests stub `fetch`, so they never touch the real bucket and need no real credentials — the real round-trip is verified once, for real, in Step 11.
+Expected: PASS (4 tests). The R2 tests stub `fetch`, so they never touch the real bucket and need no real credentials — the real round-trip is verified once, for real, in Step 9.
 
-- [ ] **Step 7: Create `netlify/lib/dataManagement.ts`**
-
-```ts
-import { supabaseAdmin } from "./supabaseAdmin";
-import type { BackupSnapshot } from "./backup";
-import { buildSnapshot } from "./backup";
-
-export async function exportAllData(): Promise<BackupSnapshot> {
-  return buildSnapshot();
-}
-
-export async function wipeAllData(): Promise<void> {
-  await supabaseAdmin.from("audit_log").delete().neq("id", 0);
-  await supabaseAdmin.from("event_participants").delete().neq("id", 0);
-  await supabaseAdmin.from("events").delete().neq("id", 0);
-  await supabaseAdmin.from("seasons").delete().neq("id", 0);
-  await supabaseAdmin.from("players").delete().neq("id", 0);
-}
-
-export async function importSnapshot(snapshot: BackupSnapshot): Promise<void> {
-  await wipeAllData();
-
-  const inserts: Array<[string, unknown[]]> = [
-    ["players", snapshot.players],
-    ["seasons", snapshot.seasons],
-    ["events", snapshot.events],
-    ["event_participants", snapshot.eventParticipants],
-    ["audit_log", snapshot.auditLog]
-  ];
-  for (const [table, rows] of inserts) {
-    if (rows.length === 0) continue;
-    const { error } = await supabaseAdmin.from(table).insert(rows);
-    if (error) throw new Error(`Import van ${table} mislukt: ${error.message}`);
-  }
-
-  const { error: sequenceError } = await supabaseAdmin.rpc("reset_identity_sequences");
-  if (sequenceError) throw new Error(`Sequenties resetten mislukt: ${sequenceError.message}`);
-}
-```
-
-- [ ] **Step 8: Add `/api/data/*` routes to `netlify/lib/router.ts`**
-
-Add this import at the top:
-
-```ts
-import { exportAllData, importSnapshot, wipeAllData } from "./dataManagement";
-import { runBackupSnapshot, type BackupSnapshot } from "./backup";
-```
-
-Insert these route blocks in `dispatch()`, above the final `throw new ApiError(404, "Niet gevonden.");`:
-
-```ts
-  if (method === "GET" && pathname === "/api/data/export") {
-    return { status: 200, body: await exportAllData() };
-  }
-
-  if (method === "POST" && pathname === "/api/data/import") {
-    const payload = body as Partial<BackupSnapshot>;
-    if (
-      !payload ||
-      !Array.isArray(payload.players) ||
-      !Array.isArray(payload.seasons) ||
-      !Array.isArray(payload.events) ||
-      !Array.isArray(payload.eventParticipants) ||
-      !Array.isArray(payload.auditLog)
-    ) {
-      throw new ApiError(400, "Ongeldig back-upbestand.");
-    }
-    await importSnapshot(payload as BackupSnapshot);
-    await insertAuditLog({ entityType: "data", entityId: 0, action: "IMPORTED", userId: ctx.userId, userEmail: ctx.userEmail });
-    return { status: 200, body: { ok: true } };
-  }
-
-  if (method === "POST" && pathname === "/api/data/wipe") {
-    await wipeAllData();
-    await insertAuditLog({ entityType: "data", entityId: 0, action: "WIPED", userId: ctx.userId, userEmail: ctx.userEmail });
-    return { status: 200, body: { ok: true } };
-  }
-
-  if (method === "POST" && pathname === "/api/data/backup-now") {
-    return { status: 200, body: { key: await runBackupSnapshot() } };
-  }
-```
-
-- [ ] **Step 9: Add a background backup after locking**
+- [ ] **Step 6: Add a background backup after locking, and the `/api/data/backup-now` route**
 
 In the `/api/events/:id/lock` block added in Task 9, replace:
 
@@ -2579,7 +2658,15 @@ with:
 
 (An R2 outage or an expired API token must not block the operator from locking an event — the daily scheduled backup remains a safety net. The failure is logged to the Netlify function log, not surfaced to the operator mid-event.)
 
-- [ ] **Step 10: Create the scheduled backup function**
+Also update the `backup.ts` import in `router.ts` from `import type { BackupSnapshot } from "./backup";` to `import { runBackupSnapshot, type BackupSnapshot } from "./backup";`, and add:
+
+```ts
+  if (method === "POST" && pathname === "/api/data/backup-now") {
+    return { status: 200, body: { key: await runBackupSnapshot() } };
+  }
+```
+
+- [ ] **Step 7: Create the scheduled backup function**
 
 Create `netlify/functions/backup-scheduled.ts`:
 
@@ -2595,7 +2682,7 @@ export default async (): Promise<Response> => {
 };
 ```
 
-- [ ] **Step 11: Create the manual backup script and smoke-test the real R2 round-trip**
+- [ ] **Step 8: Create the manual backup script and smoke-test the real R2 round-trip**
 
 Create `netlify/scripts/backup-now.ts`:
 
@@ -2626,7 +2713,7 @@ Then confirm in the Cloudflare dashboard (R2 → `kaartbuddy-backups`) that both
 
 Common failures: `403 SignatureDoesNotMatch` usually means the secret was copied with whitespace or the *token value* was pasted instead of the *secret access key*; `403 AccessDenied` means the token was scoped to the wrong bucket or created read-only.
 
-- [ ] **Step 12: Create the restore script**
+- [ ] **Step 9: Create the restore script**
 
 Create `netlify/scripts/restore-from-snapshot.ts`. It takes either `--from-r2` (pull `latest.json` straight from the bucket) or a path to a locally downloaded snapshot:
 
@@ -2667,7 +2754,7 @@ main().catch((error) => {
 
 Note that `importSnapshot` wipes the target database before inserting — that is intentional (a restore replaces state, it does not merge), but it means pointing this at the wrong `SUPABASE_URL` destroys live data. The runbook in the next step calls that out.
 
-- [ ] **Step 13: Create `docs/RESTORE_RUNBOOK.md`**
+- [ ] **Step 10: Create `docs/RESTORE_RUNBOOK.md`**
 
 ```markdown
 # Restore runbook
@@ -2705,7 +2792,7 @@ R2 → Manage R2 API Tokens) and update `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_K
 unaffected — tokens are credentials, not owners of the data.
 ```
 
-- [ ] **Step 14: Exercise the restore path once, end to end, against a scratch Supabase project**
+- [ ] **Step 11: Exercise the restore path once, end to end, against a scratch Supabase project**
 
 Create a second, throwaway Supabase project via the dashboard, run `supabase db push` against it (temporarily re-linking, or use `supabase link` with a `--project-ref` override), then — with `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` pointed at the scratch project — run:
 
@@ -2713,19 +2800,20 @@ Create a second, throwaway Supabase project via the dashboard, run `supabase db 
 cd netlify && npx tsx scripts/restore-from-snapshot.ts --from-r2
 ```
 
-This restores the snapshot uploaded in Step 11. Confirm the data landed via `supabase db execute --sql "select count(*) from players;"`, then re-point the env vars back at the real project and delete the scratch project.
+This restores the snapshot uploaded in Step 8. Confirm the data landed via `supabase db execute --sql "select count(*) from players;"`, then re-point the env vars back at the real project and delete the scratch project.
 
 Doing this once now is the whole point of the exercise: an untested restore path is not a backup.
 
-- [ ] **Step 15: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add netlify/package.json netlify/package-lock.json netlify/lib/backup.ts netlify/lib/backup.test.ts \
-  netlify/lib/dataManagement.ts netlify/lib/router.ts netlify/functions/backup-scheduled.ts \
-  netlify/scripts/backup-now.ts netlify/scripts/restore-from-snapshot.ts \
-  supabase/migrations/20260702130000_reset_identity_sequences_fn.sql docs/RESTORE_RUNBOOK.md
-git commit -m "Add Cloudflare R2 backups, restore tooling, and data-management API endpoints"
+  netlify/lib/router.ts netlify/functions/backup-scheduled.ts \
+  netlify/scripts/backup-now.ts netlify/scripts/restore-from-snapshot.ts docs/RESTORE_RUNBOOK.md
+git commit -m "Add Cloudflare R2 off-platform backups and restore tooling"
 ```
+
+Also revisit Task 16, Steps 3–5 (backup verification) at this point — they were skipped during the initial rollout while this task was postponed.
 
 ---
 
@@ -3536,7 +3624,9 @@ cd client && npm test
 
 ## Back-ups en herstel
 
-Zie `docs/RESTORE_RUNBOOK.md`.
+Nog niet geïmplementeerd (gepland, zie Task 11b in het migratieplan) — er is momenteel geen
+off-platform back-up. Databeheer's export-knop (`/api/data/export`) kan wel gebruikt worden voor
+een handmatige export.
 
 ## Specificaties
 
@@ -3582,23 +3672,25 @@ git commit -m "Remove dead offline server/localStorage code, update README for t
 netlify deploy --build
 ```
 
-Set the same environment variables from Task 1, Step 6 (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`) in the Netlify site's dashboard under Site settings → Environment variables, and `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` as build-time variables.
+Set the environment variables from Task 1, Step 6 (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) in the Netlify site's dashboard under Site settings → Environment variables, and `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` as build-time variables. `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` are not needed yet — they're added when Task 11b (off-platform backups) is picked back up.
 
 - [ ] **Step 2: Full manual walkthrough on the preview URL**
 
-Log in, create a season, create an event, add participants, enter scores across all three rounds, confirm rankings/winners compute correctly, lock the event, confirm editing is blocked, check the season ranking view, and exercise Databeheer (export/import/wipe/backup-now).
+Log in, create a season, create an event, add participants, enter scores across all three rounds, confirm rankings/winners compute correctly, lock the event, confirm editing is blocked, check the season ranking view, and exercise Databeheer (export/import/wipe — `backup-now` doesn't exist until Task 11b).
 
-- [ ] **Step 3: Verify the daily scheduled backup fires**
+> **Steps 3–5 below (backup verification) are skipped for this rollout** — Task 11b (off-platform R2 backups) is postponed. Revisit them once that task ships, before relying on this deployment as the sole copy of live data.
+
+- [ ] **Step 3: Verify the daily scheduled backup fires** — *postponed with Task 11b*
 
 In the Netlify dashboard, manually trigger the `backup-scheduled` function once (Functions tab → invoke), then confirm a new object appears under `snapshots/` in the `kaartbuddy-backups` R2 bucket and that `latest.json`'s modified timestamp has moved.
 
-- [ ] **Step 4: Confirm the lock-triggered backup fires**
+- [ ] **Step 4: Confirm the lock-triggered backup fires** — *postponed with Task 11b*
 
 Lock another test event and confirm a second `snapshots/` object appears within a few seconds. If it does not, check the function log for `Achtergrond-backup na vergrendelen is mislukt` — locking deliberately succeeds even when the backup fails, so this failure is silent in the UI by design.
 
-- [ ] **Step 5: Re-run the restore dry run against the real (non-scratch) Supabase project's data**
+- [ ] **Step 5: Re-run the restore dry run against the real (non-scratch) Supabase project's data** — *postponed with Task 11b*
 
-Follow `docs/RESTORE_RUNBOOK.md` once more, this time restoring a snapshot back into the same staging project, to confirm the full loop works against real accumulated data, not just the empty scratch project from Task 11.
+Follow `docs/RESTORE_RUNBOOK.md` once more, this time restoring a snapshot back into the same staging project, to confirm the full loop works against real accumulated data, not just the empty scratch project from Task 11b.
 
 - [ ] **Step 6: Cut over**
 
