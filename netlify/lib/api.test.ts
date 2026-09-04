@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../lib/supabaseAdmin", () => ({
+vi.mock("./supabaseAdmin", () => ({
   supabaseAdmin: {
     auth: {
       getClaims: vi.fn()
@@ -8,13 +8,13 @@ vi.mock("../lib/supabaseAdmin", () => ({
   }
 }));
 
-vi.mock("../lib/router", () => ({
+vi.mock("./router", () => ({
   handleApiRequest: vi.fn()
 }));
 
-import { supabaseAdmin } from "../lib/supabaseAdmin";
-import { handleApiRequest } from "../lib/router";
-import handler from "./api";
+import { supabaseAdmin } from "./supabaseAdmin";
+import { handleApiRequest } from "./router";
+import handler from "../functions/api";
 
 describe("api function entrypoint", () => {
   it("returns 401 when no Authorization header is present", async () => {
