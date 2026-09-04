@@ -1,4 +1,4 @@
-import { Box, Container, Drawer, Tab, Tabs, Typography } from "@mui/material";
+import { Box, Button, Container, Drawer, Tab, Tabs, Typography } from "@mui/material";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { PlayersPage } from "./pages/PlayersPage";
 import { SeasonsPage } from "./pages/SeasonsPage";
@@ -6,6 +6,8 @@ import { EventsPage } from "./pages/EventsPage";
 import { EventDetailPage } from "./pages/EventDetailPage";
 import { RankingPage } from "./pages/RankingPage";
 import { DataPage } from "./pages/DataPage";
+import { LoginPage } from "./pages/LoginPage";
+import { useAuth } from "./auth/AuthContext";
 
 const mainTabs = [
   { label: "Kaartavonden", path: "/events" },
@@ -19,6 +21,7 @@ const settingsTabs = [
 ];
 
 export function App() {
+  const { session, loading, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -29,6 +32,9 @@ export function App() {
     if (tab.path === "/") return location.pathname === "/";
     return location.pathname.startsWith(tab.path);
   });
+
+  if (loading) return null;
+  if (!session) return <LoginPage />;
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#f4f1ea", display: "flex" }}>
@@ -49,6 +55,12 @@ export function App() {
           <Typography variant="h6" sx={{ color: "#1f3a5f", fontWeight: 700 }}>
             KaartBuddy
           </Typography>
+          <Typography variant="caption" sx={{ color: "#6b5e50" }}>
+            {session.user.email}
+          </Typography>
+          <Button size="small" onClick={() => void signOut()} sx={{ mt: 1, px: 0 }}>
+            Uitloggen
+          </Button>
         </Box>
         <Box sx={{ px: 2.5, pb: 2 }}>
           <Typography
