@@ -54,4 +54,34 @@ describe("createKeyedDebouncer", () => {
     vi.advanceTimersByTime(1000);
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it("hasPending reports true only while a key's call has not yet fired", () => {
+    const debouncer = createKeyedDebouncer<[]>(500);
+    const fn = vi.fn();
+    expect(debouncer.hasPending("a")).toBe(false);
+    debouncer.schedule("a", fn);
+    expect(debouncer.hasPending("a")).toBe(true);
+    vi.advanceTimersByTime(500);
+    expect(debouncer.hasPending("a")).toBe(false);
+  });
+
+  it("flushAll invokes every pending call immediately, in place of waiting for the delay", () => {
+    const debouncer = createKeyedDebouncer<[number]>(500);
+    const fnA = vi.fn();
+    const fnB = vi.fn();
+    debouncer.schedule("a", fnA, 1);
+    debouncer.schedule("b", fnB, 2);
+    debouncer.flushAll();
+    expect(fnA).toHaveBeenCalledWith(1);
+    expect(fnB).toHaveBeenCalledWith(2);
+    // Confirm the original timers were also cleared, not just raced against.
+    vi.advanceTimersByTime(1000);
+    expect(fnA).toHaveBeenCalledTimes(1);
+    expect(fnB).toHaveBeenCalledTimes(1);
+  });
+
+  it("flushAll is a no-op when nothing is pending", () => {
+    const debouncer = createKeyedDebouncer<[]>(500);
+    expect(() => debouncer.flushAll()).not.toThrow();
+  });
 });

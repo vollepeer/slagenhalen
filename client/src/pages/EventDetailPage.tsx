@@ -57,7 +57,9 @@ export function EventDetailPage() {
 
   useEffect(() => {
     const debouncer = scoreSaveDebouncer.current;
-    return () => debouncer.cancelAll();
+    // Flush rather than cancel: a pending save must still go out even if the user
+    // navigates away before the debounce window elapses, or the edit is silently lost.
+    return () => debouncer.flushAll();
   }, []);
   const [prizeRanks, setPrizeRanks] = useState<[string, string, string]>([
     "1",
@@ -193,7 +195,26 @@ export function EventDetailPage() {
   const loadEvent = async () => {
     try {
       const data = await apiGet<EventDetail>(`/api/events/${eventId}`);
-      setEvent(data);
+      setEvent((current) => {
+        if (!current) return data;
+        // A score save still pending in the debouncer hasn't reached the server yet, so this
+        // response can't reflect it — keep the on-screen (optimistic) value for that field
+        // instead of overwriting it with the now-stale server value.
+        return {
+          ...data,
+          participants: data.participants.map((fresh) => {
+            const displayed = current.participants.find((p) => p.id === fresh.id);
+            if (!displayed) return fresh;
+            const merged = { ...fresh };
+            (["pointsR1", "pointsR2", "pointsR3"] as const).forEach((field) => {
+              if (scoreSaveDebouncer.current.hasPending(`${fresh.id}:${field}`)) {
+                merged[field] = displayed[field];
+              }
+            });
+            return merged;
+          })
+        };
+      });
       if (data.prizeRanks.length === 3) {
         setPrizeRanks([
           String(data.prizeRanks[0]),
@@ -309,9 +330,14 @@ export function EventDetailPage() {
         "PATCH",
         { [field]: payloadValue }
       );
-      await loadEvent();
+      setError(null);
     } catch (err) {
+      // Resync below either way: on success this picks up the recomputed ranks/totals; on
+      // failure the server never got the write, so this reverts the field to its real value
+      // instead of leaving the optimistic (unsaved) number on screen indefinitely.
       setError("Punten opslaan mislukt.");
+    } finally {
+      await loadEvent();
     }
   };
 
