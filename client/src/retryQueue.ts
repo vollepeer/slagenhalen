@@ -47,15 +47,22 @@ export async function flushQueue(
   if (flushing) return;
   flushing = true;
   try {
-    let queue = readQueue();
-    while (queue.length > 0) {
-      const [next, ...rest] = queue;
+    for (;;) {
+      const queue = readQueue();
+      if (queue.length === 0) break;
+      const next = queue[0];
       try {
         await sendFn(next.path, next.method, next.body);
-        queue = rest;
-        writeQueue(queue);
-      } catch {
-        break;
+        writeQueue(readQueue().filter((item) => item.id !== next.id));
+      } catch (error) {
+        if (error instanceof TypeError) {
+          // Transient network failure: stop flushing, leave this and later items queued for later retry.
+          break;
+        }
+        // Durable rejection (e.g. server-side validation error): drop this item so it doesn't
+        // retry forever, and keep flushing any remaining items.
+        console.error("Wachtende wijziging kon niet worden gesynchroniseerd en is verwijderd:", error);
+        writeQueue(readQueue().filter((item) => item.id !== next.id));
       }
     }
   } finally {
