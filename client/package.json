@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "serve": "python -m SimpleHTTPServer 8000"
+    "serve": "python -m SimpleHTTPServer 8000",
+    "test": "vitest run"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
@@ -22,7 +23,9 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^24.1.0",
     "typescript": "^5.4.5",
-    "vite": "^5.2.12"
+    "vite": "^5.2.12",
+    "vitest": "^2.0.5"
   }
 }

@@ -1,4 +1,5 @@
-import { Box, Button, Container, Drawer, Tab, Tabs, Typography } from "@mui/material";
+import { useEffect } from "react";
+import { Box, Button, Chip, Container, Drawer, Tab, Tabs, Typography } from "@mui/material";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { PlayersPage } from "./pages/PlayersPage";
 import { SeasonsPage } from "./pages/SeasonsPage";
@@ -8,6 +9,9 @@ import { RankingPage } from "./pages/RankingPage";
 import { DataPage } from "./pages/DataPage";
 import { LoginPage } from "./pages/LoginPage";
 import { useAuth } from "./auth/AuthContext";
+import { rawRequest } from "./api";
+import { startAutoFlush } from "./retryQueue";
+import { usePendingSyncCount } from "./usePendingSyncCount";
 
 const mainTabs = [
   { label: "Kaartavonden", path: "/events" },
@@ -24,6 +28,9 @@ export function App() {
   const { session, loading, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const pendingCount = usePendingSyncCount();
+
+  useEffect(() => startAutoFlush(rawRequest), []);
 
   const currentMainTab = mainTabs.findIndex((tab) =>
     location.pathname.startsWith(tab.path)
@@ -61,6 +68,14 @@ export function App() {
           <Button size="small" onClick={() => void signOut()} sx={{ mt: 1, px: 0 }}>
             Uitloggen
           </Button>
+          {pendingCount > 0 && (
+            <Chip
+              size="small"
+              color="warning"
+              sx={{ mt: 1 }}
+              label={`${pendingCount} wijziging${pendingCount === 1 ? "" : "en"} wacht${pendingCount === 1 ? "" : "en"} op synchronisatie`}
+            />
+          )}
         </Box>
         <Box sx={{ px: 2.5, pb: 2 }}>
           <Typography
