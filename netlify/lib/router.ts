@@ -16,6 +16,8 @@ import {
   updateParticipantRow
 } from "./events";
 import type { EventRow } from "./types";
+import { exportAllData, importSnapshot, wipeAllData } from "./dataManagement";
+import type { BackupSnapshot } from "./backup";
 
 export class ApiError extends Error {
   status: number;
@@ -382,6 +384,33 @@ async function dispatch(
   const seasonRankingMatch = pathname.match(/^\/api\/seasons\/(\d+)\/ranking$/);
   if (method === "GET" && seasonRankingMatch) {
     return { status: 200, body: await getSeasonRanking(Number(seasonRankingMatch[1])) };
+  }
+
+  if (method === "GET" && pathname === "/api/data/export") {
+    return { status: 200, body: await exportAllData() };
+  }
+
+  if (method === "POST" && pathname === "/api/data/import") {
+    const payload = body as Partial<BackupSnapshot>;
+    if (
+      !payload ||
+      !Array.isArray(payload.players) ||
+      !Array.isArray(payload.seasons) ||
+      !Array.isArray(payload.events) ||
+      !Array.isArray(payload.eventParticipants) ||
+      !Array.isArray(payload.auditLog)
+    ) {
+      throw new ApiError(400, "Ongeldig back-upbestand.");
+    }
+    await importSnapshot(payload as BackupSnapshot);
+    await insertAuditLog({ entityType: "data", entityId: 0, action: "IMPORTED", userId: ctx.userId, userEmail: ctx.userEmail });
+    return { status: 200, body: { ok: true } };
+  }
+
+  if (method === "POST" && pathname === "/api/data/wipe") {
+    await wipeAllData();
+    await insertAuditLog({ entityType: "data", entityId: 0, action: "WIPED", userId: ctx.userId, userEmail: ctx.userEmail });
+    return { status: 200, body: { ok: true } };
   }
 
   throw new ApiError(404, "Niet gevonden.");
