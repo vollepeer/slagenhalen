@@ -1,32 +1,39 @@
 # KaartBuddy
 
-Offline score- en rangschikkingsapp voor wekelijkse kaartavonden (Nederlandse UI) met lokale browseropslag (geen backend).
+Score- en rangschikkingsapp voor wekelijkse kaartavonden (Nederlandse UI), draaiend op Netlify (frontend + Functions) met Supabase (Postgres + Auth) als backend.
 
-## Lokale setup
+## Lokale ontwikkeling
 
-1) Start de client:
+Vereisten: Node.js, de Supabase CLI, en de Netlify CLI.
+
+1) Start Supabase lokaal:
 
 ```bash
-cd client
-npm install
-npm run dev
+supabase start
 ```
 
-De app draait op `http://localhost:5173` zonder aparte API.
+2) Zet de omgevingsvariabelen klaar in `netlify/.env` en `client/.env` (zie `docs/superpowers/specs/2026-07-02-cloud-backend-migration-design.md` §1 voor welke variabelen nodig zijn).
 
-## Configuratie
+3) Start de volledige stack (frontend + Functions) in één keer:
 
-- Data wordt lokaal opgeslagen in de browser (localStorage).
+```bash
+netlify dev
+```
 
-## Databeheer
+De app draait op `http://localhost:8888`.
 
-- Gebruik de tab “Databeheer” om back-ups te exporteren, importeren of alle data te wissen.
+## Testen
 
-## Lokale preview zonder Node
+```bash
+cd netlify && npm test
+cd client && npm test
+```
 
-1) Build de client: `cd client && npm run build`
-2) Start de lokale server: `./serve.sh` (of `./serve-spa.sh` voor SPA refresh)
-3) Open `http://localhost:8000`
+## Back-ups en herstel
+
+Nog niet geïmplementeerd (gepland, zie Task 11b in het migratieplan) — er is momenteel geen
+off-platform back-up. Databeheer's export-knop (`/api/data/export`) kan wel gebruikt worden voor
+een handmatige export.
 
 ## Specificaties
 

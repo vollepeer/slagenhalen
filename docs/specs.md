@@ -1,3 +1,5 @@
+> **Note (2026-07):** §8's "browser storage" data model describes the original offline implementation. The app now persists to Supabase Postgres — see `docs/superpowers/specs/2026-07-02-cloud-backend-migration-design.md` for the current storage architecture. All business rules below are unchanged and remain authoritative.
+
 # Codex spec: offline scoring & ranking app for weekly card nights (Dutch UI)
 
 ## 1) Goal
