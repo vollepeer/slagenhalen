@@ -1,18 +1,12 @@
 import { useEffect, useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  FormControlLabel,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography
-} from "@mui/material";
+import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiGet, apiSend } from "../api";
 import { EventSummary, Season } from "../types";
 import { formatEventDate } from "../utils/date";
@@ -25,7 +19,6 @@ export function EventsPage() {
   const [eventDate, setEventDate] = useState("");
   const [title, setTitle] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const loadSeasons = async () => {
     try {
@@ -35,7 +28,7 @@ export function EventsPage() {
         setSeasonId(data[0].id);
       }
     } catch (err) {
-      setError("Kon seizoenen niet laden.");
+      toast.error("Kon seizoenen niet laden.");
     }
   };
 
@@ -49,9 +42,8 @@ export function EventsPage() {
         `/api/events?seasonId=${activeSeasonId}&includeArchived=${showArchived}`
       );
       setEvents(data);
-      setError(null);
     } catch (err) {
-      setError("Kon kaartavonden niet laden.");
+      toast.error("Kon kaartavonden niet laden.");
     }
   };
 
@@ -65,7 +57,7 @@ export function EventsPage() {
 
   const addEvent = async () => {
     if (seasonId === "" || !eventDate) {
-      setError("Kies een seizoen en datum.");
+      toast.error("Kies een seizoen en datum.");
       return;
     }
     try {
@@ -79,118 +71,89 @@ export function EventsPage() {
       await loadEvents(seasonId, includeArchived);
       navigate(`/events/${response.id}`);
     } catch (err) {
-      setError("Kaartavond toevoegen mislukt.");
+      toast.error("Kaartavond toevoegen mislukt.");
     }
   };
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Kaartavonden
-        </Typography>
-        <Typography variant="body1">
-          Beheer kaartavonden per seizoen en open de detailpagina.
-        </Typography>
-      </Box>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-3xl font-bold">Kaartavonden</h1>
+        <p className="text-muted-foreground">Beheer kaartavonden per seizoen en open de detailpagina.</p>
+      </div>
 
       <Card>
-        <CardContent>
-          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
-            <TextField
-              select
-              label="Seizoen"
-              value={seasonId}
-              onChange={(event) => setSeasonId(Number(event.target.value))}
-              fullWidth
-            >
+        <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
+          <Select value={seasonId === "" ? undefined : String(seasonId)} onValueChange={(value) => setSeasonId(Number(value))}>
+            <SelectTrigger className="md:w-56">
+              <SelectValue placeholder="Seizoen" />
+            </SelectTrigger>
+            <SelectContent>
               {seasons.map((season) => (
-                <MenuItem key={season.id} value={season.id}>
+                <SelectItem key={season.id} value={String(season.id)}>
                   {season.name}
-                </MenuItem>
+                </SelectItem>
               ))}
-            </TextField>
-            <TextField
-              type="date"
-              label="Datum"
-              value={eventDate}
-              onChange={(event) => setEventDate(event.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={eventDate}
+            onChange={(event) => setEventDate(event.target.value)}
+            className="md:w-48"
+          />
+          <Input
+            placeholder="Titel (optioneel)"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+          <Button onClick={addEvent}>Voeg toe</Button>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="events-include-archived"
+              checked={includeArchived}
+              onCheckedChange={(checked) => setIncludeArchived(checked === true)}
             />
-            <TextField
-              label="Titel (optioneel)"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              fullWidth
-            />
-            <Button variant="contained" onClick={addEvent}>
-              Voeg toe
-            </Button>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={includeArchived}
-                  onChange={(event) => setIncludeArchived(event.target.checked)}
-                />
-              }
-              label="Toon gearchiveerde kaartavonden"
-            />
-          </Stack>
+            <Label htmlFor="events-include-archived">Toon gearchiveerde kaartavonden</Label>
+          </div>
         </CardContent>
       </Card>
 
-      {error && <Alert severity="error">{error}</Alert>}
-
-      <Stack spacing={2}>
+      <div className="flex flex-col gap-3">
         {events.map((event) => (
-          <Card key={event.id} variant="outlined">
-            <CardContent
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 2
-              }}
-            >
-              <Box>
-                <Typography variant="h6">
+          <Card key={event.id}>
+            <CardContent className="flex items-center justify-between gap-3 pt-6">
+              <div>
+                <span className="text-lg font-semibold">
                   {event.title || "Kaartavond"} · {formatEventDate(event.eventDate)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
+                </span>
+                <p className="text-sm text-muted-foreground">
                   Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
-                </Typography>
-                {event.isArchived && (
-                  <Typography variant="body2" color="text.secondary">
-                    Gearchiveerd
-                  </Typography>
-                )}
-              </Box>
-              <Stack direction="row" spacing={1}>
-                <Button variant="outlined" onClick={() => navigate(`/events/${event.id}`)}>
+                </p>
+                {event.isArchived && <p className="text-sm text-muted-foreground">Gearchiveerd</p>}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => navigate(`/events/${event.id}`)}>
                   Openen
                 </Button>
                 <Button
-                  variant="outlined"
-                  color={event.isArchived ? "secondary" : "primary"}
+                  variant="outline"
                   onClick={async () => {
                     try {
-                      await apiSend(`/api/events/${event.id}`, "PATCH", {
-                        isArchived: !event.isArchived
-                      });
+                      await apiSend(`/api/events/${event.id}`, "PATCH", { isArchived: !event.isArchived });
                       await loadEvents(seasonId, includeArchived);
                     } catch (err) {
-                      setError("Archiveren mislukt.");
+                      toast.error("Archiveren mislukt.");
                     }
                   }}
                 >
                   {event.isArchived ? "Herstellen" : "Archiveren"}
                 </Button>
-              </Stack>
+              </div>
             </CardContent>
           </Card>
         ))}
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }
