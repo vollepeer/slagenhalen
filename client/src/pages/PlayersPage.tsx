@@ -1,16 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  FormControlLabel,
-  Stack,
-  TextField,
-  Typography
-} from "@mui/material";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiGet, apiSend } from "../api";
 import { Player } from "../types";
 import { formatPlayerId } from "../utils/playerId";
@@ -20,7 +14,6 @@ export function PlayersPage() {
   const [query, setQuery] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
 
@@ -30,9 +23,8 @@ export function PlayersPage() {
         `/api/players?query=${encodeURIComponent(query)}&includeArchived=${includeArchived}`
       );
       setPlayers(data);
-      setError(null);
     } catch (err) {
-      setError("Kon spelers niet laden.");
+      toast.error("Kon spelers niet laden.");
     }
   };
 
@@ -42,15 +34,12 @@ export function PlayersPage() {
 
   const addPlayer = async () => {
     if (!name.trim()) {
-      setError("Vul een naam in.");
+      toast.error("Vul een naam in.");
       return;
     }
     try {
       const created = await apiSend<{ id: number; name: string }>("/api/players", "POST", { name });
       setName("");
-      setError(null);
-      // Insert locally instead of re-fetching the whole list — the response already has
-      // everything needed, and a new player is never archived so it always belongs in view.
       const normalizedQuery = query.trim().toLowerCase();
       if (!normalizedQuery || created.name.toLowerCase().includes(normalizedQuery)) {
         setPlayers((current) =>
@@ -60,25 +49,22 @@ export function PlayersPage() {
         );
       }
     } catch (err) {
-      setError("Toevoegen mislukt. Controleer of de naam uniek is.");
+      toast.error("Toevoegen mislukt. Controleer of de naam uniek is.");
     }
   };
 
   const toggleArchive = async (player: Player) => {
     try {
-      await apiSend(`/api/players/${player.id}`, "PATCH", {
-        isArchived: !player.isArchived
-      });
+      await apiSend(`/api/players/${player.id}`, "PATCH", { isArchived: !player.isArchived });
       await loadPlayers();
     } catch (err) {
-      setError("Archiveren mislukt.");
+      toast.error("Archiveren mislukt.");
     }
   };
 
   const startEdit = (player: Player) => {
     setEditingPlayerId(player.id);
     setEditingName(player.name);
-    setError(null);
   };
 
   const cancelEdit = () => {
@@ -88,7 +74,7 @@ export function PlayersPage() {
 
   const saveEdit = async (player: Player) => {
     if (!editingName.trim()) {
-      setError("Vul een naam in.");
+      toast.error("Vul een naam in.");
       return;
     }
     try {
@@ -96,126 +82,80 @@ export function PlayersPage() {
       await loadPlayers();
       cancelEdit();
     } catch (err) {
-      setError("Bewerken mislukt. Controleer of de naam uniek is.");
+      toast.error("Bewerken mislukt. Controleer of de naam uniek is.");
     }
   };
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Spelers
-        </Typography>
-        <Typography variant="body1">
-          Beheer spelers en zorg dat namen uniek blijven.
-        </Typography>
-      </Box>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-3xl font-bold">Spelers</h1>
+        <p className="text-muted-foreground">Beheer spelers en zorg dat namen uniek blijven.</p>
+      </div>
 
       <Card>
-        <CardContent>
-          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
-            <TextField
-              label="Zoeken"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              fullWidth
+        <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
+          <Input placeholder="Zoeken" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="players-include-archived"
+              checked={includeArchived}
+              onCheckedChange={(checked) => setIncludeArchived(checked === true)}
             />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={includeArchived}
-                  onChange={(event) => setIncludeArchived(event.target.checked)}
-                />
-              }
-              label="Toon gearchiveerde spelers"
-            />
-          </Stack>
+            <Label htmlFor="players-include-archived">Toon gearchiveerde spelers</Label>
+          </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent>
-          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
-            <TextField
-              label="Nieuwe speler"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              fullWidth
-            />
-            <Button variant="contained" onClick={addPlayer}>
-              Speler toevoegen
-            </Button>
-          </Stack>
+        <CardContent className="flex flex-col gap-2 pt-6 md:flex-row">
+          <Input
+            placeholder="Nieuwe speler"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button onClick={addPlayer}>Speler toevoegen</Button>
         </CardContent>
       </Card>
 
-      {error && <Alert severity="error">{error}</Alert>}
-
-      <Stack spacing={2}>
+      <div className="flex flex-col gap-3">
         {players.map((player) => (
-          <Card key={player.id} variant="outlined">
-            <CardContent
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 2,
-                flexDirection: { xs: "column", md: "row" },
-                alignItems: { xs: "stretch", md: "center" }
-              }}
-            >
-              <Box>
+          <Card key={player.id}>
+            <CardContent className="flex flex-col justify-between gap-3 pt-6 md:flex-row md:items-center">
+              <div>
                 {editingPlayerId === player.id ? (
-                  <TextField
-                    label="Spelernaam"
-                    value={editingName}
-                    onChange={(event) => setEditingName(event.target.value)}
-                    fullWidth
-                  />
+                  <Input value={editingName} onChange={(event) => setEditingName(event.target.value)} />
                 ) : (
-                  <Typography variant="h6">{player.name}</Typography>
+                  <span className="text-lg font-semibold">{player.name}</span>
                 )}
-                <Typography variant="body2" color="text.secondary">
-                  Speler-ID: {formatPlayerId(player.id)}
-                </Typography>
-                {player.isArchived && (
-                  <Typography variant="body2" color="text.secondary">
-                    Gearchiveerd
-                  </Typography>
-                )}
-              </Box>
-              <Stack direction="row" spacing={1}>
+                <p className="text-sm text-muted-foreground">Speler-ID: {formatPlayerId(player.id)}</p>
+                {player.isArchived && <p className="text-sm text-muted-foreground">Gearchiveerd</p>}
+              </div>
+              <div className="flex gap-2">
                 {editingPlayerId === player.id ? (
                   <>
-                    <Button
-                      variant="contained"
-                      onClick={() => saveEdit(player)}
-                      disabled={editingName.trim() === ""}
-                    >
+                    <Button onClick={() => saveEdit(player)} disabled={editingName.trim() === ""}>
                       Opslaan
                     </Button>
-                    <Button variant="outlined" onClick={cancelEdit}>
+                    <Button variant="outline" onClick={cancelEdit}>
                       Annuleren
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button variant="outlined" onClick={() => startEdit(player)}>
+                    <Button variant="outline" onClick={() => startEdit(player)}>
                       Bewerken
                     </Button>
-                    <Button
-                      variant="outlined"
-                      color={player.isArchived ? "secondary" : "primary"}
-                      onClick={() => toggleArchive(player)}
-                    >
+                    <Button variant="outline" onClick={() => toggleArchive(player)}>
                       {player.isArchived ? "Herstellen" : "Archiveren"}
                     </Button>
                   </>
                 )}
-              </Stack>
+              </div>
             </CardContent>
           </Card>
         ))}
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }
