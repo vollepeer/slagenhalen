@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { Box, Button, Chip, Container, Drawer, Tab, Tabs, Typography } from "@mui/material";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { PlayersPage } from "./pages/PlayersPage";
 import { SeasonsPage } from "./pages/SeasonsPage";
@@ -12,17 +11,37 @@ import { useAuth } from "./auth/AuthContext";
 import { rawRequest } from "./api";
 import { startAutoFlush } from "./retryQueue";
 import { usePendingSyncCount } from "./usePendingSyncCount";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger
+} from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
-const mainTabs = [
+const mainNav = [
   { label: "Kaartavonden", path: "/events" },
   { label: "Klassement", path: "/ranking" }
 ];
 
-const settingsTabs = [
+const settingsNav = [
   { label: "Seizoenen", path: "/" },
   { label: "Spelers", path: "/players" },
   { label: "Databeheer", path: "/data" }
 ];
+
+function isActivePath(pathname: string, path: string): boolean {
+  return path === "/" ? pathname === "/" : pathname.startsWith(path);
+}
 
 export function App() {
   const { session, loading, signOut } = useAuth();
@@ -32,100 +51,86 @@ export function App() {
 
   useEffect(() => startAutoFlush(rawRequest), []);
 
-  const currentMainTab = mainTabs.findIndex((tab) =>
-    location.pathname.startsWith(tab.path)
-  );
-  const currentSettingsTab = settingsTabs.findIndex((tab) => {
-    if (tab.path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(tab.path);
-  });
-
   if (loading) return null;
   if (!session) return <LoginPage />;
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: "#f4f1ea", display: "flex" }}>
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: 260,
-          flexShrink: 0,
-          "& .MuiDrawer-paper": {
-            width: 260,
-            boxSizing: "border-box",
-            bgcolor: "#f0e6d6",
-            borderRight: "1px solid #e2d7c5"
-          }
-        }}
-      >
-        <Box sx={{ px: 2.5, py: 2 }}>
-          <Typography variant="h6" sx={{ color: "#1f3a5f", fontWeight: 700 }}>
-            KaartBuddy
-          </Typography>
-          <Typography variant="caption" sx={{ color: "#6b5e50" }}>
-            {session.user.email}
-          </Typography>
-          <Button size="small" onClick={() => void signOut()} sx={{ mt: 1, px: 0 }}>
+    <SidebarProvider>
+      <Sidebar>
+        <SidebarHeader className="gap-1 px-3 py-3">
+          <span className="text-lg font-bold text-primary">KaartBuddy</span>
+          <span className="truncate text-xs text-muted-foreground">{session.user.email}</span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto w-fit justify-start px-0 text-foreground"
+            onClick={() => void signOut()}
+          >
             Uitloggen
           </Button>
           {pendingCount > 0 && (
-            <Chip
-              size="small"
-              color="warning"
-              sx={{ mt: 1 }}
-              label={`${pendingCount} wijziging${pendingCount === 1 ? "" : "en"} wacht${pendingCount === 1 ? "" : "en"} op synchronisatie`}
-            />
+            <Badge
+              variant="outline"
+              className="mt-1 w-fit border-accent bg-accent/20 text-accent-foreground"
+            >
+              {pendingCount} wijziging{pendingCount === 1 ? "" : "en"} wacht
+              {pendingCount === 1 ? "" : "en"} op synchronisatie
+            </Badge>
           )}
-        </Box>
-        <Box sx={{ px: 2.5, pb: 2 }}>
-          <Typography
-            variant="caption"
-            sx={{ color: "#6b5e50", fontWeight: 700, textTransform: "uppercase" }}
-          >
-            Hoofd
-          </Typography>
-          <Tabs
-            orientation="vertical"
-            value={currentMainTab === -1 ? false : currentMainTab}
-            onChange={(_event, value) => navigate(mainTabs[value].path)}
-            textColor="primary"
-            indicatorColor="secondary"
-            sx={{ mt: 1 }}
-          >
-            {mainTabs.map((tab) => (
-              <Tab key={tab.path} label={tab.label} sx={{ alignItems: "flex-start" }} />
-            ))}
-          </Tabs>
-          <Typography
-            variant="caption"
-            sx={{ color: "#6b5e50", fontWeight: 700, textTransform: "uppercase", mt: 2 }}
-          >
-            Instellingen
-          </Typography>
-          <Tabs
-            orientation="vertical"
-            value={currentSettingsTab === -1 ? false : currentSettingsTab}
-            onChange={(_event, value) => navigate(settingsTabs[value].path)}
-            textColor="primary"
-            indicatorColor="secondary"
-            sx={{ mt: 1 }}
-          >
-            {settingsTabs.map((tab) => (
-              <Tab key={tab.path} label={tab.label} sx={{ alignItems: "flex-start" }} />
-            ))}
-          </Tabs>
-        </Box>
-      </Drawer>
-      <Container sx={{ py: 4, flex: 1 }}>
-        <Routes>
-          <Route path="/" element={<SeasonsPage />} />
-          <Route path="/players" element={<PlayersPage />} />
-          <Route path="/data" element={<DataPage />} />
-          <Route path="/events" element={<EventsPage />} />
-          <Route path="/events/:id" element={<EventDetailPage />} />
-          <Route path="/ranking" element={<RankingPage />} />
-        </Routes>
-      </Container>
-    </Box>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Hoofd</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {mainNav.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      isActive={isActivePath(location.pathname, item.path)}
+                      onClick={() => navigate(item.path)}
+                    >
+                      {item.label}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>Instellingen</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {settingsNav.map((item) => (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      isActive={isActivePath(location.pathname, item.path)}
+                      onClick={() => navigate(item.path)}
+                    >
+                      {item.label}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+      <SidebarInset>
+        <header className="flex items-center gap-2 border-b px-4 py-3 md:hidden">
+          <SidebarTrigger />
+          <span className="font-semibold text-primary">KaartBuddy</span>
+        </header>
+        <main className="flex-1 p-6">
+          <Routes>
+            <Route path="/" element={<SeasonsPage />} />
+            <Route path="/players" element={<PlayersPage />} />
+            <Route path="/data" element={<DataPage />} />
+            <Route path="/events" element={<EventsPage />} />
+            <Route path="/events/:id" element={<EventDetailPage />} />
+            <Route path="/ranking" element={<RankingPage />} />
+          </Routes>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
