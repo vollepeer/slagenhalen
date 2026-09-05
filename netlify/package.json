@@ -1,0 +1,21 @@
+{
+  "name": "kaartbuddy-functions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.1",
+    "@types/node": "^20.12.12",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.15.5",
+    "typescript": "^5.4.5",
+    "vitest": "^2.0.5"
+  }
+}

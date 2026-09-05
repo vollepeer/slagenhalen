@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+netlify/.env
+client/.env
+!netlify/.env.test.example
+
+# Local Netlify folder
+.netlify

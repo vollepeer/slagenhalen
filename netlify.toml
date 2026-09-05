@@ -1,0 +1,13 @@
+[build]
+  base = "."
+  command = "cd netlify && npm install && cd ../client && npm install && npm run build"
+  publish = "client/dist"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,0 +1,226 @@
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  FormControlLabel,
+  Stack,
+  TextField,
+  Typography
+} from "@mui/material";
+import { apiGet, apiSend } from "../api";
+import { Season } from "../types";
+import { formatEventDate } from "../utils/date";
+
+export function SeasonsPage() {
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [scoreCountBySeason, setScoreCountBySeason] = useState<Record<number, string>>(
+    {}
+  );
+
+  const loadSeasons = async () => {
+    try {
+      const data = await apiGet<Season[]>(
+        `/api/seasons?includeArchived=${includeArchived}`
+      );
+      setSeasons(data);
+      setScoreCountBySeason((current) => {
+        const next = { ...current };
+        data.forEach((season) => {
+          next[season.id] = String(season.topScoresCount);
+        });
+        return next;
+      });
+      setError(null);
+    } catch (err) {
+      setError("Kon seizoenen niet laden.");
+    }
+  };
+
+  useEffect(() => {
+    void loadSeasons();
+  }, [includeArchived]);
+
+  const addSeason = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Vul een seizoensnaam in.");
+      return;
+    }
+    try {
+      const created = await apiSend<{ id: number }>("/api/seasons", "POST", { name });
+      setName("");
+      setError(null);
+      // Insert locally instead of re-fetching the whole list — a new season always defaults
+      // to topScoresCount 7 / no dates / not archived, and always belongs at the top (newest-first).
+      setSeasons((current) => [
+        { id: created.id, name: trimmedName, topScoresCount: 7, startDate: null, endDate: null, isArchived: false },
+        ...current
+      ]);
+      setScoreCountBySeason((current) => ({ ...current, [created.id]: "7" }));
+    } catch (err) {
+      setError("Seizoen toevoegen mislukt.");
+    }
+  };
+
+  const toggleArchive = async (season: Season) => {
+    try {
+      await apiSend(`/api/seasons/${season.id}`, "PATCH", {
+        isArchived: !season.isArchived
+      });
+      await loadSeasons();
+    } catch (err) {
+      setError("Archiveren mislukt.");
+    }
+  };
+
+  const updateScoreCount = async (season: Season, rawValue: string) => {
+    const parsed = Number(rawValue);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      setError("Vul een geldig aantal beste scores in.");
+      setScoreCountBySeason((current) => ({
+        ...current,
+        [season.id]: String(season.topScoresCount)
+      }));
+      return;
+    }
+
+    if (parsed === season.topScoresCount) {
+      return;
+    }
+
+    try {
+      await apiSend(`/api/seasons/${season.id}`, "PATCH", {
+        topScoresCount: parsed
+      });
+      await loadSeasons();
+    } catch (err) {
+      setError("Aantal beste scores opslaan mislukt.");
+      setScoreCountBySeason((current) => ({
+        ...current,
+        [season.id]: String(season.topScoresCount)
+      }));
+    }
+  };
+
+  return (
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+          Seizoenen
+        </Typography>
+        <Typography variant="body1">
+          Maak seizoenen aan en beheer archivering.
+        </Typography>
+      </Box>
+
+      <Card>
+        <CardContent>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={includeArchived}
+                onChange={(event) => setIncludeArchived(event.target.checked)}
+              />
+            }
+            label="Toon gearchiveerde seizoenen"
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
+            <TextField
+              label="Nieuw seizoen"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              fullWidth
+            />
+            <Button variant="contained" onClick={addSeason}>
+              Seizoen toevoegen
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {error && <Alert severity="error">{error}</Alert>}
+
+      <Stack spacing={2}>
+        {seasons.map((season) => (
+          <Card key={season.id} variant="outlined">
+            <CardContent
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 2
+              }}
+            >
+              <Box>
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={2}
+                  alignItems={{ xs: "flex-start", md: "center" }}
+                >
+                  <Typography variant="h6">{season.name}</Typography>
+                  <TextField
+                    label="Beste scores"
+                    type="number"
+                    size="small"
+                    value={scoreCountBySeason[season.id] ?? String(season.topScoresCount)}
+                    onChange={(event) =>
+                      setScoreCountBySeason((current) => ({
+                        ...current,
+                        [season.id]: event.target.value
+                      }))
+                    }
+                    onBlur={(event) => updateScoreCount(season, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        updateScoreCount(
+                          season,
+                          (event.target as HTMLInputElement).value
+                        );
+                      }
+                    }}
+                    inputProps={{ min: 1 }}
+                    disabled={season.isArchived}
+                    sx={{ maxWidth: 160 }}
+                  />
+                </Stack>
+                {(season.startDate || season.endDate) && (
+                  <Typography variant="body2" color="text.secondary">
+                    {season.startDate && season.endDate
+                      ? `Periode: ${formatEventDate(season.startDate)} - ${formatEventDate(season.endDate)}`
+                      : season.startDate
+                        ? `Start: ${formatEventDate(season.startDate)}`
+                        : `Einde: ${formatEventDate(season.endDate ?? "")}`}
+                  </Typography>
+                )}
+                {season.isArchived && (
+                  <Typography variant="body2" color="text.secondary">
+                    Gearchiveerd
+                  </Typography>
+                )}
+              </Box>
+              <Button
+                variant="outlined"
+                color={season.isArchived ? "secondary" : "primary"}
+                onClick={() => toggleArchive(season)}
+              >
+                {season.isArchived ? "Herstellen" : "Archiveren"}
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </Stack>
+    </Stack>
+  );
+}
