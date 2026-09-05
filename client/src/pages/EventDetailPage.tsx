@@ -412,7 +412,7 @@ export function EventDetailPage() {
       <Card>
         <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
           <Select
-            value={playerId === "" ? undefined : String(playerId)}
+            value={playerId === "" ? "" : String(playerId)}
             onValueChange={(value) => setPlayerId(Number(value))}
             disabled={event.status === "LOCKED"}
           >

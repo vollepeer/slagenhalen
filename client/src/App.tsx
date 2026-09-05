@@ -23,6 +23,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarRail,
   SidebarTrigger
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +115,7 @@ export function App() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+        <SidebarRail />
       </Sidebar>
       <SidebarInset>
         <header className="flex items-center gap-2 border-b px-4 py-3 md:hidden">

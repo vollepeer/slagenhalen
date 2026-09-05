@@ -87,7 +87,7 @@ export function RankingPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <Select value={seasonId === "" ? undefined : String(seasonId)} onValueChange={(value) => setSeasonId(Number(value))}>
+          <Select value={seasonId === "" ? "" : String(seasonId)} onValueChange={(value) => setSeasonId(Number(value))}>
             <SelectTrigger className="md:w-56">
               <SelectValue placeholder="Seizoen" />
             </SelectTrigger>

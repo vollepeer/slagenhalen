@@ -84,7 +84,7 @@ export function EventsPage() {
 
       <Card>
         <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
-          <Select value={seasonId === "" ? undefined : String(seasonId)} onValueChange={(value) => setSeasonId(Number(value))}>
+          <Select value={seasonId === "" ? "" : String(seasonId)} onValueChange={(value) => setSeasonId(Number(value))}>
             <SelectTrigger className="md:w-56">
               <SelectValue placeholder="Seizoen" />
             </SelectTrigger>
