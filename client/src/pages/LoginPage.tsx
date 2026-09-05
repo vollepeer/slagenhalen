@@ -1,50 +1,59 @@
 import { useState, type FormEvent } from "react";
-import { Alert, Box, Button, Paper, Stack, TextField, Typography } from "@mui/material";
+import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function LoginPage() {
   const { signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
-    setError(await signIn(email, password));
+    const error = await signIn(email, password);
+    if (error) toast.error(error);
     setSubmitting(false);
   };
 
   return (
-    <Box sx={{ display: "flex", justifyContent: "center", mt: 10 }}>
-      <Paper sx={{ p: 4, width: 360 }} component="form" onSubmit={handleSubmit}>
-        <Stack spacing={2}>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            KaartBuddy inloggen
-          </Typography>
-          {error && <Alert severity="error">{error}</Alert>}
-          <TextField
-            label="E-mailadres"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-            fullWidth
-          />
-          <TextField
-            label="Wachtwoord"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            fullWidth
-          />
-          <Button type="submit" variant="contained" disabled={submitting}>
-            Inloggen
-          </Button>
-        </Stack>
-      </Paper>
-    </Box>
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <Card className="w-[360px]">
+        <CardHeader>
+          <CardTitle className="text-xl">KaartBuddy inloggen</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="login-email">E-mailadres</Label>
+              <Input
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="login-password">Wachtwoord</Label>
+              <Input
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </div>
+            <Button type="submit" disabled={submitting}>
+              Inloggen
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
