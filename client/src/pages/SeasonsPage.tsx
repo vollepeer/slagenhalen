@@ -1,16 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  FormControlLabel,
-  Stack,
-  TextField,
-  Typography
-} from "@mui/material";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiGet, apiSend } from "../api";
 import { Season } from "../types";
 import { formatEventDate } from "../utils/date";
@@ -19,16 +13,11 @@ export function SeasonsPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [name, setName] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [scoreCountBySeason, setScoreCountBySeason] = useState<Record<number, string>>(
-    {}
-  );
+  const [scoreCountBySeason, setScoreCountBySeason] = useState<Record<number, string>>({});
 
   const loadSeasons = async () => {
     try {
-      const data = await apiGet<Season[]>(
-        `/api/seasons?includeArchived=${includeArchived}`
-      );
+      const data = await apiGet<Season[]>(`/api/seasons?includeArchived=${includeArchived}`);
       setSeasons(data);
       setScoreCountBySeason((current) => {
         const next = { ...current };
@@ -37,9 +26,8 @@ export function SeasonsPage() {
         });
         return next;
       });
-      setError(null);
     } catch (err) {
-      setError("Kon seizoenen niet laden.");
+      toast.error("Kon seizoenen niet laden.");
     }
   };
 
@@ -50,177 +38,126 @@ export function SeasonsPage() {
   const addSeason = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setError("Vul een seizoensnaam in.");
+      toast.error("Vul een seizoensnaam in.");
       return;
     }
     try {
       const created = await apiSend<{ id: number }>("/api/seasons", "POST", { name });
       setName("");
-      setError(null);
-      // Insert locally instead of re-fetching the whole list — a new season always defaults
-      // to topScoresCount 7 / no dates / not archived, and always belongs at the top (newest-first).
       setSeasons((current) => [
-        { id: created.id, name: trimmedName, topScoresCount: 7, startDate: null, endDate: null, isArchived: false },
+        {
+          id: created.id,
+          name: trimmedName,
+          topScoresCount: 7,
+          startDate: null,
+          endDate: null,
+          isArchived: false
+        },
         ...current
       ]);
       setScoreCountBySeason((current) => ({ ...current, [created.id]: "7" }));
     } catch (err) {
-      setError("Seizoen toevoegen mislukt.");
+      toast.error("Seizoen toevoegen mislukt.");
     }
   };
 
   const toggleArchive = async (season: Season) => {
     try {
-      await apiSend(`/api/seasons/${season.id}`, "PATCH", {
-        isArchived: !season.isArchived
-      });
+      await apiSend(`/api/seasons/${season.id}`, "PATCH", { isArchived: !season.isArchived });
       await loadSeasons();
     } catch (err) {
-      setError("Archiveren mislukt.");
+      toast.error("Archiveren mislukt.");
     }
   };
 
   const updateScoreCount = async (season: Season, rawValue: string) => {
     const parsed = Number(rawValue);
     if (!Number.isInteger(parsed) || parsed < 1) {
-      setError("Vul een geldig aantal beste scores in.");
-      setScoreCountBySeason((current) => ({
-        ...current,
-        [season.id]: String(season.topScoresCount)
-      }));
+      toast.error("Vul een geldig aantal beste scores in.");
+      setScoreCountBySeason((current) => ({ ...current, [season.id]: String(season.topScoresCount) }));
       return;
     }
-
-    if (parsed === season.topScoresCount) {
-      return;
-    }
-
+    if (parsed === season.topScoresCount) return;
     try {
-      await apiSend(`/api/seasons/${season.id}`, "PATCH", {
-        topScoresCount: parsed
-      });
+      await apiSend(`/api/seasons/${season.id}`, "PATCH", { topScoresCount: parsed });
       await loadSeasons();
     } catch (err) {
-      setError("Aantal beste scores opslaan mislukt.");
-      setScoreCountBySeason((current) => ({
-        ...current,
-        [season.id]: String(season.topScoresCount)
-      }));
+      toast.error("Aantal beste scores opslaan mislukt.");
+      setScoreCountBySeason((current) => ({ ...current, [season.id]: String(season.topScoresCount) }));
     }
   };
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Seizoenen
-        </Typography>
-        <Typography variant="body1">
-          Maak seizoenen aan en beheer archivering.
-        </Typography>
-      </Box>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-3xl font-bold">Seizoenen</h1>
+        <p className="text-muted-foreground">Maak seizoenen aan en beheer archivering.</p>
+      </div>
 
       <Card>
-        <CardContent>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={includeArchived}
-                onChange={(event) => setIncludeArchived(event.target.checked)}
-              />
-            }
-            label="Toon gearchiveerde seizoenen"
+        <CardContent className="flex items-center gap-2 pt-6">
+          <Checkbox
+            id="seasons-include-archived"
+            checked={includeArchived}
+            onCheckedChange={(checked) => setIncludeArchived(checked === true)}
           />
+          <Label htmlFor="seasons-include-archived">Toon gearchiveerde seizoenen</Label>
         </CardContent>
       </Card>
 
       <Card>
-        <CardContent>
-          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
-            <TextField
-              label="Nieuw seizoen"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              fullWidth
-            />
-            <Button variant="contained" onClick={addSeason}>
-              Seizoen toevoegen
-            </Button>
-          </Stack>
+        <CardContent className="flex flex-col gap-2 pt-6 md:flex-row">
+          <Input
+            placeholder="Nieuw seizoen"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <Button onClick={addSeason}>Seizoen toevoegen</Button>
         </CardContent>
       </Card>
 
-      {error && <Alert severity="error">{error}</Alert>}
-
-      <Stack spacing={2}>
+      <div className="flex flex-col gap-3">
         {seasons.map((season) => (
-          <Card key={season.id} variant="outlined">
-            <CardContent
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 2
-              }}
-            >
-              <Box>
-                <Stack
-                  direction={{ xs: "column", md: "row" }}
-                  spacing={2}
-                  alignItems={{ xs: "flex-start", md: "center" }}
-                >
-                  <Typography variant="h6">{season.name}</Typography>
-                  <TextField
-                    label="Beste scores"
+          <Card key={season.id}>
+            <CardContent className="flex flex-col items-start justify-between gap-3 pt-6 md:flex-row md:items-center">
+              <div>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                  <span className="text-lg font-semibold">{season.name}</span>
+                  <Input
+                    className="w-40"
                     type="number"
-                    size="small"
+                    min={1}
                     value={scoreCountBySeason[season.id] ?? String(season.topScoresCount)}
                     onChange={(event) =>
-                      setScoreCountBySeason((current) => ({
-                        ...current,
-                        [season.id]: event.target.value
-                      }))
+                      setScoreCountBySeason((current) => ({ ...current, [season.id]: event.target.value }))
                     }
                     onBlur={(event) => updateScoreCount(season, event.target.value)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
-                        updateScoreCount(
-                          season,
-                          (event.target as HTMLInputElement).value
-                        );
+                        updateScoreCount(season, (event.target as HTMLInputElement).value);
                       }
                     }}
-                    inputProps={{ min: 1 }}
                     disabled={season.isArchived}
-                    sx={{ maxWidth: 160 }}
                   />
-                </Stack>
+                </div>
                 {(season.startDate || season.endDate) && (
-                  <Typography variant="body2" color="text.secondary">
+                  <p className="text-sm text-muted-foreground">
                     {season.startDate && season.endDate
                       ? `Periode: ${formatEventDate(season.startDate)} - ${formatEventDate(season.endDate)}`
                       : season.startDate
                         ? `Start: ${formatEventDate(season.startDate)}`
                         : `Einde: ${formatEventDate(season.endDate ?? "")}`}
-                  </Typography>
+                  </p>
                 )}
-                {season.isArchived && (
-                  <Typography variant="body2" color="text.secondary">
-                    Gearchiveerd
-                  </Typography>
-                )}
-              </Box>
-              <Button
-                variant="outlined"
-                color={season.isArchived ? "secondary" : "primary"}
-                onClick={() => toggleArchive(season)}
-              >
+                {season.isArchived && <p className="text-sm text-muted-foreground">Gearchiveerd</p>}
+              </div>
+              <Button variant="outline" onClick={() => toggleArchive(season)}>
                 {season.isArchived ? "Herstellen" : "Archiveren"}
               </Button>
             </CardContent>
           </Card>
         ))}
-      </Stack>
-    </Stack>
+      </div>
+    </div>
   );
 }
