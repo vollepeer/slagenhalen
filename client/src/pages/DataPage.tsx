@@ -1,5 +1,19 @@
 import { useRef, useState } from "react";
-import { Alert, Box, Button, Card, CardContent, Divider, Stack, TextField, Typography } from "@mui/material";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { apiGet, apiSend } from "../api";
 
 function downloadFile(contents: string, filename: string, type: string) {
@@ -22,19 +36,15 @@ function buildExportFilename() {
 
 export function DataPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [playerImportText, setPlayerImportText] = useState("");
 
   const handleExport = async () => {
     try {
       const payload = await apiGet<unknown>("/api/data/export");
       downloadFile(JSON.stringify(payload, null, 2), buildExportFilename(), "application/json");
-      setSuccess("Back-up opgeslagen.");
-      setError(null);
+      toast.success("Back-up opgeslagen.");
     } catch {
-      setError("Exporteren mislukt.");
-      setSuccess(null);
+      toast.error("Exporteren mislukt.");
     }
   };
 
@@ -42,32 +52,25 @@ export function DataPage() {
     try {
       const parsed = JSON.parse(await file.text());
       await apiSend("/api/data/import", "POST", parsed);
-      setSuccess("Back-up geïmporteerd.");
-      setError(null);
+      toast.success("Back-up geïmporteerd.");
     } catch {
-      setError("Importeren mislukt. Controleer het bestand.");
-      setSuccess(null);
+      toast.error("Importeren mislukt. Controleer het bestand.");
     }
   };
 
   const handleReset = async () => {
-    const confirmed = window.confirm("Weet je zeker dat je alle data wilt wissen? Dit kan niet ongedaan worden gemaakt.");
-    if (!confirmed) return;
     try {
       await apiSend("/api/data/wipe", "POST");
-      setSuccess("Alle data is gewist.");
-      setError(null);
+      toast.success("Alle data is gewist.");
     } catch {
-      setError("Wissen mislukt.");
-      setSuccess(null);
+      toast.error("Wissen mislukt.");
     }
   };
 
   const handleImportPlayers = async () => {
     const lines = playerImportText.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
     if (lines.length === 0) {
-      setError("Plak minimaal één spelersnaam.");
-      setSuccess(null);
+      toast.error("Plak minimaal één spelersnaam.");
       return;
     }
     const normalized = new Set<string>();
@@ -91,48 +94,47 @@ export function DataPage() {
     }
 
     if (added === 0) {
-      setError("Geen nieuwe spelers toegevoegd.");
-      setSuccess(null);
+      toast.error("Geen nieuwe spelers toegevoegd.");
       return;
     }
-    setSuccess(`${added} spelers toegevoegd.`);
-    setError(null);
+    toast.success(`${added} spelers toegevoegd.`);
     setPlayerImportText("");
   };
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Databeheer
-        </Typography>
-        <Typography variant="body1">Maak een back-up, importeer data of wis de opgeslagen data.</Typography>
-        <Typography variant="body2" color="text.secondary">
-          Importeren vervangt de huidige data.
-        </Typography>
-      </Box>
-
-      {error && <Alert severity="error">{error}</Alert>}
-      {success && <Alert severity="success">{success}</Alert>}
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-3xl font-bold">Databeheer</h1>
+        <p>Maak een back-up, importeer data of wis de opgeslagen data.</p>
+        <p className="text-sm text-muted-foreground">Importeren vervangt de huidige data.</p>
+      </div>
 
       <Card>
-        <CardContent>
-          <Stack spacing={2} direction={{ xs: "column", md: "row" }}>
-            <Button variant="contained" onClick={handleExport}>
-              Exporteer back-up
-            </Button>
-            <Button variant="outlined" onClick={() => inputRef.current?.click()}>
-              Importeer back-up
-            </Button>
-            <Button variant="outlined" color="error" onClick={handleReset}>
-              Wis alle data
-            </Button>
-          </Stack>
+        <CardContent className="flex flex-col gap-2 pt-6 md:flex-row">
+          <Button onClick={handleExport}>Exporteer back-up</Button>
+          <Button variant="outline" onClick={() => inputRef.current?.click()}>
+            Importeer back-up
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive">Wis alle data</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Weet je zeker dat je alle data wilt wissen?</AlertDialogTitle>
+                <AlertDialogDescription>Dit kan niet ongedaan worden gemaakt.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                <AlertDialogAction onClick={handleReset}>Wissen</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <input
             ref={inputRef}
             type="file"
             accept="application/json"
-            style={{ display: "none" }}
+            className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void handleImport(file);
@@ -143,27 +145,18 @@ export function DataPage() {
       </Card>
 
       <Card>
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="h6">Spelers importeren</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Plak spelersnamen, één naam per regel.
-            </Typography>
-            <TextField
-              multiline
-              minRows={6}
-              placeholder={"Jan Jansen\nPiet de Vries\n..."}
-              value={playerImportText}
-              onChange={(event) => setPlayerImportText(event.target.value)}
-              fullWidth
-            />
-            <Divider />
-            <Button variant="contained" onClick={handleImportPlayers}>
-              Importeer spelers
-            </Button>
-          </Stack>
+        <CardContent className="flex flex-col gap-3 pt-6">
+          <h2 className="text-lg font-semibold">Spelers importeren</h2>
+          <p className="text-sm text-muted-foreground">Plak spelersnamen, één naam per regel.</p>
+          <Textarea
+            rows={6}
+            placeholder={"Jan Jansen\nPiet de Vries\n..."}
+            value={playerImportText}
+            onChange={(event) => setPlayerImportText(event.target.value)}
+          />
+          <Button onClick={handleImportPlayers}>Importeer spelers</Button>
         </CardContent>
       </Card>
-    </Stack>
+    </div>
   );
 }
