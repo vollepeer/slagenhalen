@@ -59,28 +59,17 @@
   --border: #e7dccc;
   --input: #e7dccc;
   --ring: #d9724c;
-  --sidebar: hsl(0 0% 98%);
-  --sidebar-foreground: hsl(240 5.3% 26.1%);
-  --sidebar-primary: hsl(240 5.9% 10%);
-  --sidebar-primary-foreground: hsl(0 0% 98%);
-  --sidebar-accent: hsl(240 4.8% 95.9%);
-  --sidebar-accent-foreground: hsl(240 5.9% 10%);
-  --sidebar-border: hsl(220 13% 91%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  --sidebar: #f3ece1;
+  --sidebar-foreground: #3a2e22;
+  --sidebar-primary: #d9724c;
+  --sidebar-primary-foreground: #fffaf5;
+  --sidebar-accent: #e7dccc;
+  --sidebar-accent-foreground: #3a2e22;
+  --sidebar-border: #e2d7c5;
+  --sidebar-ring: #d9724c;
 }
 
 body {
   @apply bg-background text-foreground;
   font-family: var(--font-sans);
-}
-
-.dark {
-  --sidebar: hsl(240 5.9% 10%);
-  --sidebar-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-primary: hsl(224.3 76.3% 48%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(240 3.7% 15.9%);
-  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-  --sidebar-border: hsl(240 3.7% 15.9%);
-  --sidebar-ring: hsl(217.2 91.2% 59.8%);
 }
