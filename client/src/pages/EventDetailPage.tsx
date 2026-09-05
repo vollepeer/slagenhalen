@@ -5,6 +5,7 @@ import { Trophy, Medal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,8 @@ export function EventDetailPage() {
 
   useEffect(() => {
     const debouncer = scoreSaveDebouncer.current;
+    // Flush rather than cancel: a pending save must still go out even if the user
+    // navigates away before the debounce window elapses, or the edit is silently lost.
     return () => debouncer.flushAll();
   }, []);
 
@@ -179,6 +182,9 @@ export function EventDetailPage() {
       const data = await apiGet<EventDetail>(`/api/events/${eventId}`);
       setEvent((current) => {
         if (!current) return data;
+        // A score save still pending in the debouncer hasn't reached the server yet, so this
+        // response can't reflect it — keep the on-screen (optimistic) value for that field
+        // instead of overwriting it with the now-stale server value.
         return {
           ...data,
           participants: data.participants.map((fresh) => {
@@ -293,6 +299,9 @@ export function EventDetailPage() {
     try {
       await apiSend(`/api/events/${eventId}/participants/${participant.id}`, "PATCH", { [field]: payloadValue });
     } catch (err) {
+      // Resync below either way: on success this picks up the recomputed ranks/totals; on
+      // failure the server never got the write, so this reverts the field to its real value
+      // instead of leaving the optimistic (unsaved) number on screen indefinitely.
       toast.error("Punten opslaan mislukt.");
     } finally {
       await loadEvent();
@@ -557,22 +566,27 @@ export function EventDetailPage() {
             <p className="text-sm font-medium">Prijsrangen per ronde</p>
             <div className="flex flex-col gap-2">
               {prizeRanks.map((value, index) => (
-                <Input
-                  key={`prize-rank-${index}`}
-                  type="number"
-                  min={1}
-                  className="max-w-40"
-                  placeholder={`R${index + 1}`}
-                  value={value}
-                  onChange={(event) =>
-                    setPrizeRanks((current) => {
-                      const next = [...current] as [string, string, string];
-                      next[index] = event.target.value;
-                      return next;
-                    })
-                  }
-                  disabled={event.status === "LOCKED"}
-                />
+                <div key={`prize-rank-${index}`} className="flex items-center gap-2">
+                  <Label htmlFor={`prize-rank-input-${index}`} className="w-6 shrink-0">
+                    R{index + 1}
+                  </Label>
+                  <Input
+                    id={`prize-rank-input-${index}`}
+                    type="number"
+                    min={1}
+                    className="max-w-40"
+                    placeholder={`R${index + 1}`}
+                    value={value}
+                    onChange={(event) =>
+                      setPrizeRanks((current) => {
+                        const next = [...current] as [string, string, string];
+                        next[index] = event.target.value;
+                        return next;
+                      })
+                    }
+                    disabled={event.status === "LOCKED"}
+                  />
+                </div>
               ))}
               <Button variant="outline" onClick={savePrizeRanks} disabled={event.status === "LOCKED"}>
                 Opslaan
