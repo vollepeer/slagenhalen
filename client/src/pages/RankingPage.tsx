@@ -1,43 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Box,
-  Card,
-  CardContent,
-  MenuItem,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography
-} from "@mui/material";
-import { alpha, useTheme } from "@mui/material/styles";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiGet } from "../api";
 import { Season, SeasonRanking } from "../types";
 import { formatPlayerId } from "../utils/playerId";
+import { RANK_MEDAL_COLORS } from "../utils/medalColors";
+
+const TIE_HIGHLIGHT_CLASSES = ["bg-accent/20", "bg-primary/10", "bg-secondary"];
 
 export function RankingPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [seasonId, setSeasonId] = useState<number | "">("");
   const [ranking, setRanking] = useState<SeasonRanking | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const theme = useTheme();
-
-  const tieColors = useMemo(
-    () => [
-      alpha(theme.palette.secondary.main, 0.16),
-      alpha(theme.palette.primary.main, 0.12),
-      alpha(theme.palette.secondary.main, 0.1)
-    ],
-    [theme]
-  );
 
   const rankingDisplay = useMemo(() => {
     if (!ranking?.ranking) {
-      return { rows: [], tieColorByScore: new Map<number, string>() };
+      return { rows: [], tieClassByScore: new Map<number, string>() };
     }
 
     const rows = [...ranking.ranking].sort((a, b) => a.rank - b.rank);
@@ -46,19 +27,19 @@ export function RankingPage() {
       scoreCounts.set(entry.seasonTotal, (scoreCounts.get(entry.seasonTotal) ?? 0) + 1);
     });
 
-    const tieColorByScore = new Map<number, string>();
+    const tieClassByScore = new Map<number, string>();
     let tieIndex = 0;
     rows.forEach((entry) => {
       if ((scoreCounts.get(entry.seasonTotal) ?? 0) > 1) {
-        if (!tieColorByScore.has(entry.seasonTotal)) {
-          tieColorByScore.set(entry.seasonTotal, tieColors[tieIndex % tieColors.length]);
+        if (!tieClassByScore.has(entry.seasonTotal)) {
+          tieClassByScore.set(entry.seasonTotal, TIE_HIGHLIGHT_CLASSES[tieIndex % TIE_HIGHLIGHT_CLASSES.length]);
           tieIndex += 1;
         }
       }
     });
 
-    return { rows, tieColorByScore };
-  }, [ranking, tieColors]);
+    return { rows, tieClassByScore };
+  }, [ranking]);
 
   const loadSeasons = async () => {
     try {
@@ -68,7 +49,7 @@ export function RankingPage() {
         setSeasonId(data[0].id);
       }
     } catch (err) {
-      setError("Kon seizoenen niet laden.");
+      toast.error("Kon seizoenen niet laden.");
     }
   };
 
@@ -78,13 +59,10 @@ export function RankingPage() {
       return;
     }
     try {
-      const data = await apiGet<SeasonRanking>(
-        `/api/seasons/${activeSeasonId}/ranking`
-      );
+      const data = await apiGet<SeasonRanking>(`/api/seasons/${activeSeasonId}/ranking`);
       setRanking(data);
-      setError(null);
     } catch (err) {
-      setError("Kon klassement niet laden.");
+      toast.error("Kon klassement niet laden.");
     }
   };
 
@@ -96,76 +74,75 @@ export function RankingPage() {
     void loadRanking(seasonId);
   }, [seasonId]);
 
-  const activeSeason =
-    seasonId === "" ? null : seasons.find((season) => season.id === seasonId) ?? null;
+  const activeSeason = seasonId === "" ? null : seasons.find((season) => season.id === seasonId) ?? null;
 
   return (
-    <Stack spacing={3}>
-      <Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-          Klassement
-        </Typography>
-        <Typography variant="body1">
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-3xl font-bold">Klassement</h1>
+        <p className="text-muted-foreground">
           Het klassement wordt alleen getoond wanneer alle kaartavonden zijn vergrendeld.
-        </Typography>
-      </Box>
+        </p>
+      </div>
 
       <Card>
-        <CardContent>
-          <TextField
-            select
-            label="Seizoen"
-            value={seasonId}
-            onChange={(event) => setSeasonId(Number(event.target.value))}
-            fullWidth
-          >
-            {seasons.map((season) => (
-              <MenuItem key={season.id} value={season.id}>
-                {season.name}
-              </MenuItem>
-            ))}
-          </TextField>
+        <CardContent className="pt-6">
+          <Select value={seasonId === "" ? undefined : String(seasonId)} onValueChange={(value) => setSeasonId(Number(value))}>
+            <SelectTrigger className="md:w-56">
+              <SelectValue placeholder="Seizoen" />
+            </SelectTrigger>
+            <SelectContent>
+              {seasons.map((season) => (
+                <SelectItem key={season.id} value={String(season.id)}>
+                  {season.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {activeSeason && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <p className="mt-2 text-sm text-muted-foreground">
               Beste {activeSeason.topScoresCount} scores tellen mee voor het klassement.
-            </Typography>
+            </p>
           )}
         </CardContent>
       </Card>
 
-      {error && <Alert severity="error">{error}</Alert>}
-
       {ranking && !ranking.available && (
-        <Alert severity="info">{ranking.message}</Alert>
+        <Card>
+          <CardContent className="pt-6 text-sm">{ranking.message}</CardContent>
+        </Card>
       )}
 
       {ranking?.available && ranking.ranking && (
         <Card>
-          <CardContent>
+          <CardContent className="pt-6">
             {ranking.tieWarning && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
+              <p className="mb-4 text-sm font-medium text-destructive">
                 Er is een gelijke stand in het klassement.
-              </Alert>
+              </p>
             )}
-            <Table size="small">
-              <TableHead>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>Rang</TableCell>
-                  <TableCell>Speler-ID</TableCell>
-                  <TableCell>Speler</TableCell>
-                  <TableCell>Totaal punten</TableCell>
-                  <TableCell>Kaartavonden</TableCell>
+                  <TableHead>Rang</TableHead>
+                  <TableHead>Speler-ID</TableHead>
+                  <TableHead>Speler</TableHead>
+                  <TableHead>Totaal punten</TableHead>
+                  <TableHead>Kaartavonden</TableHead>
                 </TableRow>
-              </TableHead>
+              </TableHeader>
               <TableBody>
                 {rankingDisplay.rows.map((entry) => (
-                  <TableRow
-                    key={entry.playerId}
-                    sx={{
-                      backgroundColor: rankingDisplay.tieColorByScore.get(entry.seasonTotal)
-                    }}
-                  >
-                    <TableCell sx={{ fontWeight: 700 }}>{entry.rank}</TableCell>
+                  <TableRow key={entry.playerId} className={rankingDisplay.tieClassByScore.get(entry.seasonTotal)}>
+                    <TableCell className="font-semibold">
+                      {entry.rank <= 3 ? (
+                        <Badge style={{ backgroundColor: RANK_MEDAL_COLORS[entry.rank - 1] }} className="text-foreground">
+                          {entry.rank}
+                        </Badge>
+                      ) : (
+                        entry.rank
+                      )}
+                    </TableCell>
                     <TableCell>{formatPlayerId(entry.playerId)}</TableCell>
                     <TableCell>{entry.playerName}</TableCell>
                     <TableCell>{entry.seasonTotal}</TableCell>
@@ -177,6 +154,6 @@ export function RankingPage() {
           </CardContent>
         </Card>
       )}
-    </Stack>
+    </div>
   );
 }
