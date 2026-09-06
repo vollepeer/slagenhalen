@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -20,27 +20,37 @@ export function EventsPage() {
   const [title, setTitle] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
 
+  // Seasons here includes archived ones — the events list below is grouped by season and an
+  // event can belong to a season that's since been archived, so its name still needs to be
+  // resolvable. The "new event" dropdown filters this down to active seasons only (see
+  // activeSeasons below); archiving a season doesn't affect which seasons its past events
+  // are grouped under.
   const loadSeasons = async () => {
     try {
-      const data = await apiGet<Season[]>("/api/seasons?includeArchived=false");
-      setSeasons(data.filter((season) => !season.isArchived));
-      if (data.length > 0 && seasonId === "") {
-        setSeasonId(data[0].id);
+      const data = await apiGet<Season[]>("/api/seasons?includeArchived=true");
+      setSeasons(data);
+      const firstActive = data.find((season) => !season.isArchived);
+      if (firstActive && seasonId === "") {
+        setSeasonId(firstActive.id);
       }
     } catch (err) {
       toast.error("Kon seizoenen niet laden.");
     }
   };
 
-  const loadEvents = async (activeSeasonId: number | "", showArchived: boolean) => {
-    if (activeSeasonId === "") {
-      setEvents([]);
-      return;
-    }
+  const activeSeasons = useMemo(() => seasons.filter((season) => !season.isArchived), [seasons]);
+
+  const seasonNameById = useMemo(() => {
+    const map = new Map<number, string>();
+    seasons.forEach((season) => map.set(season.id, season.name));
+    return map;
+  }, [seasons]);
+
+  // The events list always shows every season's events (grouped below) — the season picker
+  // above only controls which season a newly created event is added to.
+  const loadEvents = async (showArchived: boolean) => {
     try {
-      const data = await apiGet<EventSummary[]>(
-        `/api/events?seasonId=${activeSeasonId}&includeArchived=${showArchived}`
-      );
+      const data = await apiGet<EventSummary[]>(`/api/events?includeArchived=${showArchived}`);
       setEvents(data);
     } catch (err) {
       toast.error("Kon kaartavonden niet laden.");
@@ -52,8 +62,24 @@ export function EventsPage() {
   }, []);
 
   useEffect(() => {
-    void loadEvents(seasonId, includeArchived);
-  }, [seasonId, includeArchived]);
+    void loadEvents(includeArchived);
+  }, [includeArchived]);
+
+  const eventsBySeason = useMemo(() => {
+    const groups = new Map<number, EventSummary[]>();
+    events.forEach((event) => {
+      const group = groups.get(event.seasonId) ?? [];
+      group.push(event);
+      groups.set(event.seasonId, group);
+    });
+    return Array.from(groups.entries())
+      .map(([seasonIdKey, seasonEvents]) => ({
+        seasonId: seasonIdKey,
+        seasonName: seasonNameById.get(seasonIdKey) ?? "Onbekend seizoen",
+        events: seasonEvents
+      }))
+      .sort((a, b) => a.seasonName.localeCompare(b.seasonName));
+  }, [events, seasonNameById]);
 
   const addEvent = async () => {
     if (seasonId === "" || !eventDate) {
@@ -68,7 +94,7 @@ export function EventsPage() {
       });
       setEventDate("");
       setTitle("");
-      await loadEvents(seasonId, includeArchived);
+      await loadEvents(includeArchived);
       navigate(`/events/${response.id}`);
     } catch (err) {
       toast.error("Kaartavond toevoegen mislukt.");
@@ -89,7 +115,7 @@ export function EventsPage() {
               <SelectValue placeholder="Seizoen" />
             </SelectTrigger>
             <SelectContent>
-              {seasons.map((season) => (
+              {activeSeasons.map((season) => (
                 <SelectItem key={season.id} value={String(season.id)}>
                   {season.name}
                 </SelectItem>
@@ -119,39 +145,44 @@ export function EventsPage() {
         </CardContent>
       </Card>
 
-      <div className="flex flex-col gap-3">
-        {events.map((event) => (
-          <Card key={event.id}>
-            <CardContent className="flex items-center justify-between gap-3 pt-6">
-              <div>
-                <span className="text-lg font-semibold">
-                  {event.title || "Kaartavond"} · {formatEventDate(event.eventDate)}
-                </span>
-                <p className="text-sm text-muted-foreground">
-                  Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
-                </p>
-                {event.isArchived && <p className="text-sm text-muted-foreground">Gearchiveerd</p>}
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => navigate(`/events/${event.id}`)}>
-                  Openen
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      await apiSend(`/api/events/${event.id}`, "PATCH", { isArchived: !event.isArchived });
-                      await loadEvents(seasonId, includeArchived);
-                    } catch (err) {
-                      toast.error("Archiveren mislukt.");
-                    }
-                  }}
-                >
-                  {event.isArchived ? "Herstellen" : "Archiveren"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+      <div className="flex flex-col gap-6">
+        {eventsBySeason.map((group) => (
+          <div key={group.seasonId} className="flex flex-col gap-3">
+            <h2 className="text-xl font-semibold">{group.seasonName}</h2>
+            {group.events.map((event) => (
+              <Card key={event.id}>
+                <CardContent className="flex items-center justify-between gap-3 pt-6">
+                  <div>
+                    <span className="text-lg font-semibold">
+                      {event.title || "Kaartavond"} · {formatEventDate(event.eventDate)}
+                    </span>
+                    <p className="text-sm text-muted-foreground">
+                      Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
+                    </p>
+                    {event.isArchived && <p className="text-sm text-muted-foreground">Gearchiveerd</p>}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => navigate(`/events/${event.id}`)}>
+                      Openen
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await apiSend(`/api/events/${event.id}`, "PATCH", { isArchived: !event.isArchived });
+                          await loadEvents(includeArchived);
+                        } catch (err) {
+                          toast.error("Archiveren mislukt.");
+                        }
+                      }}
+                    >
+                      {event.isArchived ? "Herstellen" : "Archiveren"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         ))}
       </div>
     </div>
