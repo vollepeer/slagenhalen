@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LoadingButton } from "@/components/LoadingButton";
 import { apiGet, apiSend } from "../api";
 import { Season } from "../types";
@@ -132,22 +134,44 @@ export function SeasonsPage() {
               <div>
                 <div className="flex flex-col gap-2 md:flex-row md:items-center">
                   <span className="text-lg font-semibold">{season.name}</span>
-                  <Input
-                    className="w-40"
-                    type="number"
-                    min={1}
-                    value={scoreCountBySeason[season.id] ?? String(season.topScoresCount)}
-                    onChange={(event) =>
-                      setScoreCountBySeason((current) => ({ ...current, [season.id]: event.target.value }))
-                    }
-                    onBlur={(event) => updateScoreCount(season, event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        updateScoreCount(season, (event.target as HTMLInputElement).value);
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor={`top-scores-count-${season.id}`} className="flex items-center gap-1 whitespace-nowrap">
+                      Beste scores
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="text-muted-foreground"
+                            aria-label="Uitleg bij aantal beste scores"
+                          >
+                            <Info className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-64">
+                          Bepaalt hoeveel van de beste kaartavond-resultaten van een speler meetellen voor het
+                          klassement van dit seizoen. Alleen de hoogste N totalen tellen mee; mindere avonden worden
+                          niet meegerekend.
+                        </TooltipContent>
+                      </Tooltip>
+                    </Label>
+                    <Input
+                      id={`top-scores-count-${season.id}`}
+                      className="w-24"
+                      type="number"
+                      min={1}
+                      value={scoreCountBySeason[season.id] ?? String(season.topScoresCount)}
+                      onChange={(event) =>
+                        setScoreCountBySeason((current) => ({ ...current, [season.id]: event.target.value }))
                       }
-                    }}
-                    disabled={season.isArchived}
-                  />
+                      onBlur={(event) => updateScoreCount(season, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          updateScoreCount(season, (event.target as HTMLInputElement).value);
+                        }
+                      }}
+                      disabled={season.isArchived}
+                    />
+                  </div>
                 </div>
                 {(season.startDate || season.endDate) && (
                   <p className="text-sm text-muted-foreground">
