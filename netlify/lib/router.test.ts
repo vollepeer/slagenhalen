@@ -153,4 +153,81 @@ describe("data management endpoints", () => {
     expect(players.body as unknown[]).toHaveLength(1);
     expect((players.body as { name: string }[])[0].name).toBe("Jan");
   });
+
+  it("imports a legacy offline-app export (camelCase, meta.lastIds wrapper), converting it end-to-end", async () => {
+    const legacyBackup = {
+      meta: { lastIds: { players: 1, seasons: 1, events: 1, eventParticipants: 1, auditLog: 0 } },
+      players: [
+        { id: 1, name: "Piet", isArchived: false, createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" }
+      ],
+      seasons: [
+        {
+          id: 1,
+          name: "2020",
+          topScoresCount: 7,
+          startDate: null,
+          endDate: null,
+          isArchived: false,
+          createdAt: "2020-01-01T00:00:00.000Z",
+          updatedAt: "2020-01-01T00:00:00.000Z"
+        }
+      ],
+      events: [
+        {
+          id: 1,
+          seasonId: 1,
+          eventDate: "2020-03-01",
+          title: null,
+          notes: null,
+          prizeRank1: 1,
+          prizeRank2: 18,
+          prizeRank3: 25,
+          status: "LOCKED" as const,
+          lockedAt: "2020-03-01T22:00:00.000Z",
+          isArchived: false,
+          createdAt: "2020-03-01T20:00:00.000Z",
+          updatedAt: "2020-03-01T22:00:00.000Z"
+        }
+      ],
+      eventParticipants: [
+        {
+          id: 1,
+          eventId: 1,
+          playerId: 1,
+          pointsR1: 10,
+          pointsR2: 8,
+          pointsR3: 12,
+          createdAt: "2020-03-01T20:05:00.000Z",
+          updatedAt: "2020-03-01T21:00:00.000Z"
+        }
+      ],
+      auditLog: [
+        { id: 1, entityType: "event", entityId: 1, action: "LOCKED", oldValueJson: null, newValueJson: null, createdAt: "2020-03-01T22:00:00.000Z" }
+      ]
+    };
+
+    const importResult = await handleApiRequest("POST", "/api/data/import", new URLSearchParams(), legacyBackup, ctx);
+    expect(importResult.status).toBe(200);
+
+    const players = await handleApiRequest("GET", "/api/players", new URLSearchParams(), undefined, ctx);
+    expect((players.body as { name: string }[])[0].name).toBe("Piet");
+
+    const eventDetail = await handleApiRequest("GET", "/api/events/1", new URLSearchParams(), undefined, ctx);
+    expect(eventDetail.status).toBe(200);
+    const event = eventDetail.body as { status: string; participants: Array<{ playerName: string; pointsR1: number; totalPoints: number }> };
+    expect(event.status).toBe("LOCKED");
+    expect(event.participants).toHaveLength(1);
+    expect(event.participants[0].playerName).toBe("Piet");
+    expect(event.participants[0].pointsR1).toBe(10);
+    expect(event.participants[0].totalPoints).toBe(30);
+
+    // Legacy audit entries aren't migrated — the only entry present is the router's own
+    // "IMPORTED" log line for this import action (attributed to the real authenticated user),
+    // not the legacy file's "LOCKED" entry (which had no user attribution to carry over).
+    const exportAfter = await handleApiRequest("GET", "/api/data/export", new URLSearchParams(), undefined, ctx);
+    const auditLog = (exportAfter.body as { auditLog: Array<{ action: string; entity_type: string }> }).auditLog;
+    expect(auditLog).toHaveLength(1);
+    expect(auditLog[0].action).toBe("IMPORTED");
+    expect(auditLog[0].entity_type).toBe("data");
+  });
 });

@@ -18,6 +18,7 @@ import {
 import type { EventRow } from "./types";
 import { exportAllData, importSnapshot, wipeAllData } from "./dataManagement";
 import type { BackupSnapshot } from "./backup";
+import { convertLegacyOfflineBackup, isLegacyOfflineBackup } from "./legacyImportFormat";
 
 export class ApiError extends Error {
   status: number;
@@ -391,7 +392,10 @@ async function dispatch(
   }
 
   if (method === "POST" && pathname === "/api/data/import") {
-    const payload = body as Partial<BackupSnapshot>;
+    const uploaded = body as unknown;
+    const payload = (
+      isLegacyOfflineBackup(uploaded) ? convertLegacyOfflineBackup(uploaded) : uploaded
+    ) as Partial<BackupSnapshot>;
     if (
       !payload ||
       !Array.isArray(payload.players) ||
