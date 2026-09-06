@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LoadingButton } from "@/components/LoadingButton";
 import { apiGet, apiSend } from "../api";
 import { EventSummary, Season } from "../types";
 import { formatEventDate } from "../utils/date";
@@ -19,6 +20,8 @@ export function EventsPage() {
   const [eventDate, setEventDate] = useState("");
   const [title, setTitle] = useState("");
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [addingEvent, setAddingEvent] = useState(false);
+  const [archivingEventIds, setArchivingEventIds] = useState<Set<number>>(new Set());
 
   // Seasons here includes archived ones — the events list below is grouped by season and an
   // event can belong to a season that's since been archived, so its name still needs to be
@@ -89,6 +92,7 @@ export function EventsPage() {
       toast.error("Kies een seizoen en datum.");
       return;
     }
+    setAddingEvent(true);
     try {
       const response = await apiSend<{ id: number }>("/api/events", "POST", {
         seasonId,
@@ -101,6 +105,8 @@ export function EventsPage() {
       navigate(`/events/${response.id}`);
     } catch (err) {
       toast.error("Kaartavond toevoegen mislukt.");
+    } finally {
+      setAddingEvent(false);
     }
   };
 
@@ -136,7 +142,9 @@ export function EventsPage() {
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
-          <Button onClick={addEvent}>Voeg toe</Button>
+          <LoadingButton loading={addingEvent} onClick={addEvent}>
+            Voeg toe
+          </LoadingButton>
           <div className="flex items-center gap-2">
             <Checkbox
               id="events-include-archived"
@@ -168,19 +176,27 @@ export function EventsPage() {
                     <Button variant="outline" onClick={() => navigate(`/events/${event.id}`)}>
                       Openen
                     </Button>
-                    <Button
+                    <LoadingButton
                       variant="outline"
+                      loading={archivingEventIds.has(event.id)}
                       onClick={async () => {
+                        setArchivingEventIds((current) => new Set(current).add(event.id));
                         try {
                           await apiSend(`/api/events/${event.id}`, "PATCH", { isArchived: !event.isArchived });
                           await loadEvents(includeArchived);
                         } catch (err) {
                           toast.error("Archiveren mislukt.");
+                        } finally {
+                          setArchivingEventIds((current) => {
+                            const next = new Set(current);
+                            next.delete(event.id);
+                            return next;
+                          });
                         }
                       }}
                     >
                       {event.isArchived ? "Herstellen" : "Archiveren"}
-                    </Button>
+                    </LoadingButton>
                   </div>
                 </CardContent>
               </Card>

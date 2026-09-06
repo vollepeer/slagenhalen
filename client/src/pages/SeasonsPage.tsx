@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingButton } from "@/components/LoadingButton";
 import { apiGet, apiSend } from "../api";
 import { Season } from "../types";
 import { formatEventDate } from "../utils/date";
@@ -14,6 +15,7 @@ export function SeasonsPage() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [name, setName] = useState("");
   const [scoreCountBySeason, setScoreCountBySeason] = useState<Record<number, string>>({});
+  const [archivingSeasonIds, setArchivingSeasonIds] = useState<Set<number>>(new Set());
 
   const loadSeasons = async () => {
     try {
@@ -62,11 +64,18 @@ export function SeasonsPage() {
   };
 
   const toggleArchive = async (season: Season) => {
+    setArchivingSeasonIds((current) => new Set(current).add(season.id));
     try {
       await apiSend(`/api/seasons/${season.id}`, "PATCH", { isArchived: !season.isArchived });
       await loadSeasons();
     } catch (err) {
       toast.error("Archiveren mislukt.");
+    } finally {
+      setArchivingSeasonIds((current) => {
+        const next = new Set(current);
+        next.delete(season.id);
+        return next;
+      });
     }
   };
 
@@ -151,9 +160,13 @@ export function SeasonsPage() {
                 )}
                 {season.isArchived && <p className="text-sm text-muted-foreground">Gearchiveerd</p>}
               </div>
-              <Button variant="outline" onClick={() => toggleArchive(season)}>
+              <LoadingButton
+                variant="outline"
+                loading={archivingSeasonIds.has(season.id)}
+                onClick={() => toggleArchive(season)}
+              >
                 {season.isArchived ? "Herstellen" : "Archiveren"}
-              </Button>
+              </LoadingButton>
             </CardContent>
           </Card>
         ))}

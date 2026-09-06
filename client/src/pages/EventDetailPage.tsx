@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { LoadingButton } from "@/components/LoadingButton";
 import { cn } from "@/lib/utils";
 import { apiGet, apiSend } from "../api";
 import { EventDetail, EventParticipant, Player } from "../types";
@@ -38,6 +39,10 @@ export function EventDetailPage() {
   const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("playerName");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [addingParticipant, setAddingParticipant] = useState(false);
+  const [removingParticipantIds, setRemovingParticipantIds] = useState<Set<number>>(new Set());
+  const [savingPrizeRanks, setSavingPrizeRanks] = useState(false);
+  const [lockToggling, setLockToggling] = useState(false);
   const inputRefs = useRef<
     Record<number, Partial<Record<"pointsR1" | "pointsR2" | "pointsR3", HTMLInputElement | null>>>
   >({});
@@ -240,12 +245,15 @@ export function EventDetailPage() {
       toast.error("Kies een speler.");
       return;
     }
+    setAddingParticipant(true);
     try {
       await apiSend(`/api/events/${eventId}/participants`, "POST", { playerId });
       toast.success("Deelnemer toegevoegd.");
       await loadEvent();
     } catch (err) {
       toast.error("Deelnemer toevoegen mislukt.");
+    } finally {
+      setAddingParticipant(false);
     }
   };
 
@@ -328,6 +336,7 @@ export function EventDetailPage() {
   };
 
   const removeParticipant = async (participant: EventParticipant) => {
+    setRemovingParticipantIds((current) => new Set(current).add(participant.id));
     try {
       await apiSend(`/api/events/${eventId}/participants/${participant.id}`, "DELETE");
       toast.success("Deelnemer verwijderd.");
@@ -335,16 +344,25 @@ export function EventDetailPage() {
       await loadPlayers();
     } catch (err) {
       toast.error("Deelnemer verwijderen mislukt.");
+    } finally {
+      setRemovingParticipantIds((current) => {
+        const next = new Set(current);
+        next.delete(participant.id);
+        return next;
+      });
     }
   };
 
   const lockEvent = async () => {
+    setLockToggling(true);
     try {
       await apiSend(`/api/events/${eventId}/lock`, "POST");
       toast.success("Kaartavond vergrendeld.");
       await loadEvent();
     } catch (err) {
       toast.error("Vergrendelen mislukt. Controleer de voorwaarden.");
+    } finally {
+      setLockToggling(false);
     }
   };
 
@@ -359,6 +377,7 @@ export function EventDetailPage() {
       toast.error("Prijsrangen moeten uniek zijn.");
       return;
     }
+    setSavingPrizeRanks(true);
     try {
       await apiSend(`/api/events/${eventId}`, "PATCH", {
         prizeRank1: parsed[0],
@@ -369,16 +388,21 @@ export function EventDetailPage() {
       await loadEvent();
     } catch (err) {
       toast.error("Prijsrangen opslaan mislukt.");
+    } finally {
+      setSavingPrizeRanks(false);
     }
   };
 
   const unlockEvent = async () => {
+    setLockToggling(true);
     try {
       await apiSend(`/api/events/${eventId}/unlock`, "POST");
       toast.success("Kaartavond ontgrendeld.");
       await loadEvent();
     } catch (err) {
       toast.error("Ontgrendelen mislukt.");
+    } finally {
+      setLockToggling(false);
     }
   };
 
@@ -427,9 +451,13 @@ export function EventDetailPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button onClick={addParticipant} disabled={event.status === "LOCKED" || availablePlayers.length === 0}>
+          <LoadingButton
+            loading={addingParticipant}
+            onClick={addParticipant}
+            disabled={event.status === "LOCKED" || availablePlayers.length === 0}
+          >
             Deelnemer toevoegen
-          </Button>
+          </LoadingButton>
         </CardContent>
       </Card>
 
@@ -542,14 +570,15 @@ export function EventDetailPage() {
                     </TableCell>
                     <TableCell>{participant.totalPoints ?? ""}</TableCell>
                     <TableCell>
-                      <Button
+                      <LoadingButton
                         variant="ghost"
                         className="text-destructive"
+                        loading={removingParticipantIds.has(participant.id)}
                         onClick={() => removeParticipant(participant)}
                         disabled={event.status === "LOCKED"}
                       >
                         Verwijderen
-                      </Button>
+                      </LoadingButton>
                     </TableCell>
                   </TableRow>
                 );
@@ -588,9 +617,14 @@ export function EventDetailPage() {
                   />
                 </div>
               ))}
-              <Button variant="outline" onClick={savePrizeRanks} disabled={event.status === "LOCKED"}>
+              <LoadingButton
+                variant="outline"
+                loading={savingPrizeRanks}
+                onClick={savePrizeRanks}
+                disabled={event.status === "LOCKED"}
+              >
                 Opslaan
-              </Button>
+              </LoadingButton>
             </div>
           </CardContent>
         </Card>
@@ -656,9 +690,9 @@ export function EventDetailPage() {
               <>
                 <h2 className="text-lg font-semibold">Ontgrendelen</h2>
                 <p className="text-sm text-muted-foreground">Ontgrendel om de scores en deelnemers te wijzigen.</p>
-                <Button className="mt-2" variant="secondary" onClick={unlockEvent}>
+                <LoadingButton className="mt-2" variant="secondary" loading={lockToggling} onClick={unlockEvent}>
                   Kaartavond ontgrendelen
-                </Button>
+                </LoadingButton>
               </>
             ) : (
               <>
@@ -668,9 +702,14 @@ export function EventDetailPage() {
                 ) : (
                   <p className="text-sm text-muted-foreground">Voorwaarden niet voldaan: {event.lockReasons.join(", ")}</p>
                 )}
-                <Button className="mt-2" onClick={lockEvent} disabled={!event.canLock}>
+                <LoadingButton
+                  className="mt-2"
+                  loading={lockToggling}
+                  onClick={lockEvent}
+                  disabled={!event.canLock}
+                >
                   Kaartavond vergrendelen
-                </Button>
+                </LoadingButton>
               </>
             )}
             {event.tieErrors.length > 0 && (

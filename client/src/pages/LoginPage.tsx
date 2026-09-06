@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { useAuth } from "../auth/AuthContext";
-import { Button } from "@/components/ui/button";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,9 +15,12 @@ export function LoginPage() {
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
-    const error = await signIn(email, password);
-    if (error) toast.error(error);
-    setSubmitting(false);
+    try {
+      const error = await signIn(email, password);
+      if (error) toast.error(error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -48,9 +51,9 @@ export function LoginPage() {
                 required
               />
             </div>
-            <Button type="submit" disabled={submitting}>
+            <LoadingButton type="submit" loading={submitting}>
               Inloggen
-            </Button>
+            </LoadingButton>
           </form>
         </CardContent>
       </Card>

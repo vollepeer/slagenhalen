@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LoadingButton } from "@/components/LoadingButton";
 import { apiGet, apiSend } from "../api";
 import { Player } from "../types";
 import { formatPlayerId } from "../utils/playerId";
@@ -16,6 +17,8 @@ export function PlayersPage() {
   const [name, setName] = useState("");
   const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [archivingPlayerIds, setArchivingPlayerIds] = useState<Set<number>>(new Set());
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadPlayers = async () => {
     try {
@@ -54,11 +57,18 @@ export function PlayersPage() {
   };
 
   const toggleArchive = async (player: Player) => {
+    setArchivingPlayerIds((current) => new Set(current).add(player.id));
     try {
       await apiSend(`/api/players/${player.id}`, "PATCH", { isArchived: !player.isArchived });
       await loadPlayers();
     } catch (err) {
       toast.error("Archiveren mislukt.");
+    } finally {
+      setArchivingPlayerIds((current) => {
+        const next = new Set(current);
+        next.delete(player.id);
+        return next;
+      });
     }
   };
 
@@ -77,12 +87,15 @@ export function PlayersPage() {
       toast.error("Vul een naam in.");
       return;
     }
+    setSavingEdit(true);
     try {
       await apiSend(`/api/players/${player.id}`, "PATCH", { name: editingName });
       await loadPlayers();
       cancelEdit();
     } catch (err) {
       toast.error("Bewerken mislukt. Controleer of de naam uniek is.");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -134,10 +147,14 @@ export function PlayersPage() {
               <div className="flex gap-2">
                 {editingPlayerId === player.id ? (
                   <>
-                    <Button onClick={() => saveEdit(player)} disabled={editingName.trim() === ""}>
+                    <LoadingButton
+                      loading={savingEdit}
+                      onClick={() => saveEdit(player)}
+                      disabled={editingName.trim() === ""}
+                    >
                       Opslaan
-                    </Button>
-                    <Button variant="outline" onClick={cancelEdit}>
+                    </LoadingButton>
+                    <Button variant="outline" onClick={cancelEdit} disabled={savingEdit}>
                       Annuleren
                     </Button>
                   </>
@@ -146,9 +163,13 @@ export function PlayersPage() {
                     <Button variant="outline" onClick={() => startEdit(player)}>
                       Bewerken
                     </Button>
-                    <Button variant="outline" onClick={() => toggleArchive(player)}>
+                    <LoadingButton
+                      variant="outline"
+                      loading={archivingPlayerIds.has(player.id)}
+                      onClick={() => toggleArchive(player)}
+                    >
                       {player.isArchived ? "Herstellen" : "Archiveren"}
-                    </Button>
+                    </LoadingButton>
                   </>
                 )}
               </div>

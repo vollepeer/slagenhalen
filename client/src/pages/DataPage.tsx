@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { LoadingButton } from "@/components/LoadingButton";
 import { apiGet, apiSend } from "../api";
 
 function downloadFile(contents: string, filename: string, type: string) {
@@ -37,33 +39,48 @@ function buildExportFilename() {
 export function DataPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [playerImportText, setPlayerImportText] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [wiping, setWiping] = useState(false);
+  const [wipeDialogOpen, setWipeDialogOpen] = useState(false);
+  const [importingPlayers, setImportingPlayers] = useState(false);
 
   const handleExport = async () => {
+    setExporting(true);
     try {
       const payload = await apiGet<unknown>("/api/data/export");
       downloadFile(JSON.stringify(payload, null, 2), buildExportFilename(), "application/json");
       toast.success("Back-up opgeslagen.");
     } catch {
       toast.error("Exporteren mislukt.");
+    } finally {
+      setExporting(false);
     }
   };
 
   const handleImport = async (file: File) => {
+    setImporting(true);
     try {
       const parsed = JSON.parse(await file.text());
       await apiSend("/api/data/import", "POST", parsed);
       toast.success("Back-up geïmporteerd.");
     } catch {
       toast.error("Importeren mislukt. Controleer het bestand.");
+    } finally {
+      setImporting(false);
     }
   };
 
   const handleReset = async () => {
+    setWiping(true);
     try {
       await apiSend("/api/data/wipe", "POST");
       toast.success("Alle data is gewist.");
     } catch {
       toast.error("Wissen mislukt.");
+    } finally {
+      setWiping(false);
+      setWipeDialogOpen(false);
     }
   };
 
@@ -83,14 +100,19 @@ export function DataPage() {
       }
     });
 
+    setImportingPlayers(true);
     let added = 0;
-    for (const name of uniqueNames) {
-      try {
-        await apiSend("/api/players", "POST", { name });
-        added += 1;
-      } catch {
-        // naam bestaat al of ongeldig; overslaan
+    try {
+      for (const name of uniqueNames) {
+        try {
+          await apiSend("/api/players", "POST", { name });
+          added += 1;
+        } catch {
+          // naam bestaat al of ongeldig; overslaan
+        }
       }
+    } finally {
+      setImportingPlayers(false);
     }
 
     if (added === 0) {
@@ -111,11 +133,13 @@ export function DataPage() {
 
       <Card>
         <CardContent className="flex flex-col gap-2 pt-6 md:flex-row">
-          <Button onClick={handleExport}>Exporteer back-up</Button>
-          <Button variant="outline" onClick={() => inputRef.current?.click()}>
+          <LoadingButton loading={exporting} onClick={handleExport}>
+            Exporteer back-up
+          </LoadingButton>
+          <LoadingButton loading={importing} variant="outline" onClick={() => inputRef.current?.click()}>
             Importeer back-up
-          </Button>
-          <AlertDialog>
+          </LoadingButton>
+          <AlertDialog open={wipeDialogOpen} onOpenChange={(open) => !wiping && setWipeDialogOpen(open)}>
             <AlertDialogTrigger asChild>
               <Button variant="destructive">Wis alle data</Button>
             </AlertDialogTrigger>
@@ -125,8 +149,17 @@ export function DataPage() {
                 <AlertDialogDescription>Dit kan niet ongedaan worden gemaakt.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Annuleren</AlertDialogCancel>
-                <AlertDialogAction onClick={handleReset}>Wissen</AlertDialogAction>
+                <AlertDialogCancel disabled={wiping}>Annuleren</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void handleReset();
+                  }}
+                  disabled={wiping}
+                >
+                  {wiping && <Loader2 className="size-4 animate-spin" />}
+                  Wissen
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -154,7 +187,9 @@ export function DataPage() {
             value={playerImportText}
             onChange={(event) => setPlayerImportText(event.target.value)}
           />
-          <Button onClick={handleImportPlayers}>Importeer spelers</Button>
+          <LoadingButton loading={importingPlayers} onClick={handleImportPlayers}>
+            Importeer spelers
+          </LoadingButton>
         </CardContent>
       </Card>
     </div>
