@@ -135,7 +135,7 @@ export function EventsPage() {
             type="date"
             value={eventDate}
             onChange={(event) => setEventDate(event.target.value)}
-            className="md:w-48"
+            className="md:w-72"
           />
           <Input
             placeholder="Titel (optioneel)"

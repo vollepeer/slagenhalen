@@ -682,9 +682,9 @@ export function EventDetailPage() {
                 </div>
               ))
             )}
-            <div className="rounded-lg border border-secondary-foreground/20 bg-secondary-foreground/10 p-3">
+            <div className="rounded-lg border bg-card p-3 text-card-foreground">
               <div className="flex items-center gap-2">
-                <Trophy className="h-4 w-4" />
+                <Trophy className="h-4 w-4 text-secondary" />
                 <span className="font-semibold">Eindwinnaar</span>
               </div>
               <div className="mt-1">
@@ -699,7 +699,7 @@ export function EventDetailPage() {
                     );
                   })
                 ) : (
-                  <p className="text-sm text-secondary-foreground">Nog geen eindwinnaar beschikbaar.</p>
+                  <p className="text-sm text-muted-foreground">Nog geen eindwinnaar beschikbaar.</p>
                 )}
               </div>
             </div>
