@@ -72,7 +72,7 @@ export function App() {
           {pendingCount > 0 && (
             <Badge
               variant="outline"
-              className="mt-1 w-fit border-accent bg-accent/20 text-accent-foreground"
+              className="mt-1 w-fit border-secondary/40 bg-secondary/15 text-foreground"
             >
               {pendingCount} wijziging{pendingCount === 1 ? "" : "en"} wacht
               {pendingCount === 1 ? "" : "en"} op synchronisatie

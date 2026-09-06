@@ -9,7 +9,7 @@ import { Season, SeasonRanking } from "../types";
 import { formatPlayerId } from "../utils/playerId";
 import { RANK_MEDAL_COLORS } from "../utils/medalColors";
 
-const TIE_HIGHLIGHT_CLASSES = ["bg-accent/20", "bg-primary/10", "bg-secondary"];
+const TIE_HIGHLIGHT_CLASSES = ["bg-primary/15", "bg-secondary/15", "bg-muted"];
 
 export function RankingPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);

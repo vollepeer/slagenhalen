@@ -151,6 +151,7 @@ export function DataPage() {
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={wiping}>Annuleren</AlertDialogCancel>
                 <AlertDialogAction
+                  variant="destructive"
                   onClick={(event) => {
                     event.preventDefault();
                     void handleReset();

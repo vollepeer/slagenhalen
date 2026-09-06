@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useNavigate, useParams } from "react-router-dom";
 import { Trophy, Medal } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LoadingButton } from "@/components/LoadingButton";
 import { cn } from "@/lib/utils";
 import { apiGet, apiSend } from "../api";
-import { EventDetail, EventParticipant, Player } from "../types";
+import { EventDetail, EventParticipant, Player, Season } from "../types";
 import { formatEventDate } from "../utils/date";
 import { formatPlayerId } from "../utils/playerId";
 import { createKeyedDebouncer } from "../utils/keyedDebouncer";
@@ -34,6 +35,7 @@ export function EventDetailPage() {
   const navigate = useNavigate();
   const eventId = Number(id);
   const [event, setEvent] = useState<EventDetail | null>(null);
+  const [seasons, setSeasons] = useState<Season[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [playerId, setPlayerId] = useState<number | "">("");
   const [activeParticipantId, setActiveParticipantId] = useState<number | null>(null);
@@ -225,6 +227,17 @@ export function EventDetailPage() {
     }
   };
 
+  // includeArchived=true because the event's season may since have been archived —
+  // the label should still resolve its name.
+  const loadSeasons = async () => {
+    try {
+      const data = await apiGet<Season[]>("/api/seasons?includeArchived=true");
+      setSeasons(data);
+    } catch (err) {
+      toast.error("Kon seizoen niet laden.");
+    }
+  };
+
   useEffect(() => {
     if (!Number.isFinite(eventId)) {
       navigate("/events");
@@ -232,7 +245,13 @@ export function EventDetailPage() {
     }
     void loadEvent();
     void loadPlayers();
+    void loadSeasons();
   }, [eventId]);
+
+  const seasonName = useMemo(() => {
+    if (!event) return null;
+    return seasons.find((season) => season.id === event.seasonId)?.name ?? null;
+  }, [seasons, event]);
 
   const availablePlayers = useMemo(() => {
     if (!event) return players;
@@ -419,14 +438,17 @@ export function EventDetailPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-bold">{event.title || "Kaartavond"}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold">{event.title || "Kaartavond"}</h1>
+          {seasonName && <Badge variant="outline">{seasonName}</Badge>}
+        </div>
         <p>
           Datum: {formatEventDate(event.eventDate)} · Status: {event.status === "LOCKED" ? "Vergrendeld" : "Open"}
         </p>
       </div>
 
       {event.status === "LOCKED" && (
-        <Card className="border-primary/40 bg-secondary">
+        <Card className="border-primary/40 bg-secondary text-secondary-foreground">
           <CardContent className="pt-6 text-sm">
             Deze kaartavond is vergrendeld. Ontgrendel om wijzigingen te doen.
           </CardContent>
@@ -629,16 +651,16 @@ export function EventDetailPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-secondary">
+        <Card className="bg-secondary text-secondary-foreground">
           <CardContent className="flex flex-col gap-3 pt-6">
             <h2 className="text-lg font-semibold">Kaartavondresultaten</h2>
             {event.roundWinners.every((round) => round.winners.length === 0) ? (
-              <p className="text-sm text-muted-foreground">Nog geen prijswinnaars beschikbaar.</p>
+              <p className="text-sm text-secondary-foreground">Nog geen prijswinnaars beschikbaar.</p>
             ) : (
               event.roundWinners.map((round) => (
-                <div key={`round-${round.round}`} className="rounded-lg border bg-card p-3">
+                <div key={`round-${round.round}`} className="rounded-lg border bg-card p-3 text-card-foreground">
                   <div className="flex items-center gap-2">
-                    <Medal className="h-4 w-4 text-accent" />
+                    <Medal className="h-4 w-4 text-secondary" />
                     <span className="font-semibold">R{round.round}</span>
                   </div>
                   <div className="mt-1">
@@ -660,9 +682,9 @@ export function EventDetailPage() {
                 </div>
               ))
             )}
-            <div className="rounded-lg border border-accent/40 bg-accent/10 p-3">
+            <div className="rounded-lg border border-secondary-foreground/20 bg-secondary-foreground/10 p-3">
               <div className="flex items-center gap-2">
-                <Trophy className="h-4 w-4 text-accent" />
+                <Trophy className="h-4 w-4" />
                 <span className="font-semibold">Eindwinnaar</span>
               </div>
               <div className="mt-1">
@@ -677,7 +699,7 @@ export function EventDetailPage() {
                     );
                   })
                 ) : (
-                  <p className="text-sm text-muted-foreground">Nog geen eindwinnaar beschikbaar.</p>
+                  <p className="text-sm text-secondary-foreground">Nog geen eindwinnaar beschikbaar.</p>
                 )}
               </div>
             </div>
