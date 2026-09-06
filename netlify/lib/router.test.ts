@@ -230,4 +230,29 @@ describe("data management endpoints", () => {
     expect(auditLog[0].action).toBe("IMPORTED");
     expect(auditLog[0].entity_type).toBe("data");
   });
+
+  it("rejects a corrupted legacy-shaped import (missing array) with 400 and does not wipe existing data", async () => {
+    await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Blijft staan" }, ctx);
+
+    const corruptedLegacyBackup = {
+      meta: { lastIds: { players: 0, seasons: 0, events: 0, eventParticipants: 0, auditLog: 0 } },
+      // "players" is missing entirely — a real export from the old app never omits it.
+      seasons: [],
+      events: [],
+      eventParticipants: [],
+      auditLog: []
+    };
+
+    const importResult = await handleApiRequest(
+      "POST",
+      "/api/data/import",
+      new URLSearchParams(),
+      corruptedLegacyBackup,
+      ctx
+    );
+    expect(importResult.status).toBe(400);
+
+    const players = await handleApiRequest("GET", "/api/players", new URLSearchParams(), undefined, ctx);
+    expect((players.body as { name: string }[])[0].name).toBe("Blijft staan");
+  });
 });

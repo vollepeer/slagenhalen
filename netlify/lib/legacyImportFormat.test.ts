@@ -45,6 +45,20 @@ describe("isLegacyOfflineBackup", () => {
   it("rejects an object with a meta key but no lastIds", () => {
     expect(isLegacyOfflineBackup({ meta: {} })).toBe(false);
   });
+
+  it("rejects a legacy-shaped payload missing one of the five arrays entirely", () => {
+    // A real export from the old app always has all five arrays present. Import wipes
+    // existing data before inserting, so a payload that only *looks* legacy but is
+    // actually missing an array must be rejected up front — never silently treated as
+    // "legacy with an empty table," which would wipe live data and import nothing.
+    const { players, ...rest } = emptyLegacyStore;
+    expect(isLegacyOfflineBackup(rest)).toBe(false);
+  });
+
+  it("rejects a legacy-shaped payload where an array field is actually a non-array", () => {
+    expect(isLegacyOfflineBackup({ ...emptyLegacyStore, players: {} })).toBe(false);
+    expect(isLegacyOfflineBackup({ ...emptyLegacyStore, seasons: "not an array" })).toBe(false);
+  });
 });
 
 describe("convertLegacyOfflineBackup", () => {

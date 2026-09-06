@@ -59,11 +59,30 @@ type LegacyOfflineBackup = {
   auditLog?: unknown[];
 };
 
+// The discriminator is "has a meta.lastIds wrapper" — the current export format
+// (BackupSnapshot/buildSnapshot) never produces a `meta` key, so this is unambiguous today.
+// If a `meta` field is ever added to the current format for an unrelated reason, this needs
+// a second look.
+//
+// A real export from the old app always has all five arrays present (its own readStore/
+// normalizeStore guarantees this, even for an otherwise-empty store) — so besides the
+// meta.lastIds wrapper, this also requires every array to actually be an array. Import is
+// destructive (it wipes existing data before inserting), so a legacy-shaped-but-corrupted
+// upload must be rejected as invalid up front rather than have its missing arrays silently
+// default to empty, which would wipe live data and import nothing.
 export function isLegacyOfflineBackup(payload: unknown): payload is LegacyOfflineBackup {
   if (!payload || typeof payload !== "object") return false;
   const meta = (payload as { meta?: unknown }).meta;
-  if (!meta || typeof meta !== "object") return false;
-  return "lastIds" in meta;
+  if (!meta || typeof meta !== "object" || !("lastIds" in meta)) return false;
+
+  const candidate = payload as Record<string, unknown>;
+  return (
+    Array.isArray(candidate.players) &&
+    Array.isArray(candidate.seasons) &&
+    Array.isArray(candidate.events) &&
+    Array.isArray(candidate.eventParticipants) &&
+    Array.isArray(candidate.auditLog)
+  );
 }
 
 export function convertLegacyOfflineBackup(legacy: LegacyOfflineBackup): BackupSnapshot {
