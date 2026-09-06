@@ -10,6 +10,7 @@ import {
   getParticipants,
   insertEvent,
   insertParticipant,
+  insertParticipantsBulk,
   listEvents,
   listEventRowsForSeason,
   updateEventRow,
@@ -198,6 +199,9 @@ async function dispatch(
 
     if (!(await findSeasonById(payload.seasonId as number))) throw new ApiError(404, "Seizoen niet gevonden.");
 
+    const activePlayers = await listPlayers("", false);
+    if (activePlayers.length > 60) throw new ApiError(400, "Maximaal 60 deelnemers toegestaan.");
+
     const event = await insertEvent({
       seasonId: payload.seasonId as number,
       eventDate: payload.eventDate as string,
@@ -205,6 +209,7 @@ async function dispatch(
       notes: typeof payload.notes === "string" ? payload.notes : null,
       prizeRanks
     });
+    await insertParticipantsBulk(event.id, activePlayers.map((player) => player.id));
     await insertAuditLog({ entityType: "event", entityId: event.id, action: "CREATED", userId: ctx.userId, userEmail: ctx.userEmail });
     return { status: 201, body: { id: event.id } };
   }

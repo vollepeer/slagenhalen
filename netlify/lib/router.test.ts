@@ -42,6 +42,36 @@ describe("seasons endpoints", () => {
 });
 
 describe("events endpoints", () => {
+  it("auto-adds every active player as a participant when creating an event", async () => {
+    const season = await handleApiRequest("POST", "/api/seasons", new URLSearchParams(), { name: "2026" }, ctx);
+    const seasonId = (season.body as { id: number }).id;
+
+    await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Bert" }, ctx);
+    const archivedPlayer = await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Zoe" }, ctx);
+    const archivedPlayerId = (archivedPlayer.body as { id: number }).id;
+    await handleApiRequest(
+      "PATCH",
+      `/api/players/${archivedPlayerId}`,
+      new URLSearchParams(),
+      { isArchived: true },
+      ctx
+    );
+    await handleApiRequest("POST", "/api/players", new URLSearchParams(), { name: "Ann" }, ctx);
+
+    const event = await handleApiRequest(
+      "POST",
+      "/api/events",
+      new URLSearchParams(),
+      { seasonId, eventDate: "2026-07-02" },
+      ctx
+    );
+    const eventId = (event.body as { id: number }).id;
+
+    const eventDetail = await handleApiRequest("GET", `/api/events/${eventId}`, new URLSearchParams(), undefined, ctx);
+    const participants = (eventDetail.body as { participants: Array<{ playerName: string }> }).participants;
+    expect(participants.map((p) => p.playerName)).toEqual(["Ann", "Bert"]);
+  });
+
   it("blocks locking until every participant has all three scores", async () => {
     const season = await handleApiRequest("POST", "/api/seasons", new URLSearchParams(), { name: "2026" }, ctx);
     const seasonId = (season.body as { id: number }).id;

@@ -114,6 +114,23 @@ export async function findParticipant(eventId: number, playerId: number) {
   return data;
 }
 
+export async function insertParticipantsBulk(eventId: number, playerIds: number[]): Promise<void> {
+  if (playerIds.length === 0) return;
+  const now = new Date().toISOString();
+  const { error } = await supabaseAdmin.from("event_participants").insert(
+    playerIds.map((playerId) => ({
+      event_id: eventId,
+      player_id: playerId,
+      points_r1: null,
+      points_r2: null,
+      points_r3: null,
+      created_at: now,
+      updated_at: now
+    }))
+  );
+  if (error) throw new Error(error.message);
+}
+
 export async function insertParticipant(eventId: number, playerId: number): Promise<{ id: number }> {
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin
