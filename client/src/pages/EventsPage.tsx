@@ -65,6 +65,9 @@ export function EventsPage() {
     void loadEvents(includeArchived);
   }, [includeArchived]);
 
+  // Groups events by season and sorts the groups alphabetically by season name. Events within
+  // each group keep the order the backend already returns them in (date descending) — not
+  // re-sorted here.
   const eventsBySeason = useMemo(() => {
     const groups = new Map<number, EventSummary[]>();
     events.forEach((event) => {
